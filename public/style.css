@@ -1,0 +1,840 @@
+/* ==========================================================================
+   Weiqi Online (围棋在线) - Global Styles
+   ========================================================================== */
+
+:root {
+  --bg-primary: #f4efe6;
+  --bg-card: #ffffff;
+  --text-main: #2b231d;
+  --text-muted: #6b635b;
+  --accent-gold: #e2a03f;
+  --accent-gold-dark: #b87b22;
+  --primary-teal: #1a6f67;
+  --primary-teal-hover: #13554f;
+  --border-color: #dfd7cc;
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.2);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ==========================================================================
+   App Header & Navigation
+   ========================================================================== */
+
+.app-header {
+  background: #ffffff;
+  border-bottom: 1px solid var(--border-color);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.brand-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 20px;
+  line-height: 1;
+}
+.brand-icon .b-dot { color: #111; }
+.brand-icon .w-dot { color: #888; text-shadow: 0 0 1px #000; }
+
+.brand-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #1a1614;
+}
+
+.mode-badge {
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+  margin-left: 8px;
+}
+.mode-badge.match {
+  background: #eef7f6;
+  color: var(--primary-teal);
+  border: 1px solid #b2dfdb;
+}
+.mode-badge.teach {
+  background: #f0f7ff;
+  color: #0284c7;
+  border: 1px solid #bae6fd;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.room-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f7f4ed;
+  border: 1px solid #e0d8cc;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #443c35;
+}
+
+.btn-header {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+.btn-header:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+.btn-header.primary {
+  background: var(--primary-teal);
+  border-color: var(--primary-teal);
+  color: #ffffff;
+}
+.btn-header.primary:hover {
+  background: var(--primary-teal-hover);
+}
+
+/* ==========================================================================
+   Main Layout & Board Stage (Figure 2 Style)
+   ========================================================================== */
+
+.main-stage {
+  flex: 1;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.board-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.board-title-group h2 {
+  font-size: 24px;
+  font-weight: 800;
+  color: #1a1614;
+}
+.board-title-group p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.board-size-switches {
+  display: flex;
+  background: #e2dcd2;
+  padding: 3px;
+  border-radius: 8px;
+  gap: 2px;
+}
+.board-size-btn {
+  border: none;
+  background: transparent;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #594f45;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.board-size-btn.active {
+  background: var(--primary-teal);
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* Go Board Container */
+.board-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+}
+
+.board-container {
+  width: 100%;
+  max-width: 680px;
+  aspect-ratio: 1 / 1;
+  user-select: none;
+}
+
+.go-board-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Info Bar below Board */
+.board-info-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.turn-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+}
+.turn-indicator .stone-badge {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.board-counts {
+  color: #5c554e;
+}
+.captures-count {
+  color: #443c35;
+}
+
+.status-toast {
+  font-size: 14px;
+  color: var(--primary-teal);
+  font-weight: 600;
+  padding: 4px 6px;
+}
+
+/* Clocks display */
+.clocks-container {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.player-clock-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  font-size: 14px;
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+}
+.player-clock-box.active {
+  background: #fef3c7;
+  border-color: #f59e0b;
+  color: #b45309;
+}
+
+/* ==========================================================================
+   Figure 2: Teaching Mode Controls (Blue Dashed Box)
+   ========================================================================== */
+
+.teach-mode-panel {
+  border: 2px dashed #3b82f6;
+  border-radius: 8px;
+  background: rgba(239, 246, 255, 0.7);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.teach-row-mode {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.teach-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e40af;
+}
+
+.radio-group {
+  display: flex;
+  gap: 8px;
+}
+.radio-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+.radio-chip input[type="radio"] {
+  display: none;
+}
+.radio-chip.active {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #0369a1;
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.15);
+}
+
+.teach-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-teach {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-teach:hover {
+  background: #f8fafc;
+  border-color: #94a3b8;
+}
+.btn-teach.primary {
+  background: var(--primary-teal);
+  border-color: var(--primary-teal);
+  color: #ffffff;
+}
+.btn-teach.primary:hover {
+  background: var(--primary-teal-hover);
+}
+.btn-teach:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Teaching step navigator */
+.teach-step-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed #bfdbfe;
+}
+.step-nav-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e40af;
+  min-width: 64px;
+}
+.btn-step {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+}
+.btn-step:hover {
+  background: #f1f5f9;
+}
+
+/* Match Mode standard toolbar */
+.match-mode-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+.match-action-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* ==========================================================================
+   Figure 1: Match Setup Dialog / Modal ("与好友对局")
+   ========================================================================== */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  padding: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.modal-backdrop.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.match-modal-card {
+  background: #38383a;
+  color: #e5e5e7;
+  width: 100%;
+  max-width: 440px;
+  border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  border: 1px solid #4a4a4d;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  position: relative;
+  padding: 18px 20px 14px;
+  text-align: center;
+  border-bottom: 1px solid #48484a;
+}
+.modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.modal-close-btn {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  background: transparent;
+  border: none;
+  color: #8e8e93;
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+}
+.modal-close-btn:hover {
+  color: #ffffff;
+}
+
+.modal-body {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Top Tabs (邀请好友 / 对弈) */
+.modal-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  background: #2c2c2e;
+  padding: 4px;
+  border-radius: 8px;
+}
+.modal-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #a1a1a6;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.modal-tab-btn.active {
+  background: #444446;
+  border-color: #d4a359;
+  color: #d4a359;
+}
+
+/* Form Item */
+.form-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form-label {
+  font-size: 13px;
+  color: #b0b0b5;
+  font-weight: 500;
+}
+
+/* Invite Link Box */
+.invite-link-row {
+  display: flex;
+  gap: 6px;
+}
+.invite-input {
+  flex: 1;
+  background: #2c2c2e;
+  border: 1px solid #48484a;
+  border-radius: 6px;
+  color: #ffffff;
+  padding: 8px 10px;
+  font-size: 13px;
+  outline: none;
+}
+.btn-copy-invite {
+  background: #4a4a4d;
+  border: 1px solid #5a5a5e;
+  color: #ffffff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-copy-invite:hover {
+  background: #5a5a5e;
+}
+
+/* Board size buttons (Fig 1) */
+.board-size-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.size-toggle-btn {
+  background: #48484a;
+  border: 1px solid transparent;
+  color: #d1d1d6;
+  padding: 9px 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+.size-toggle-btn:hover {
+  background: #545458;
+}
+.size-toggle-btn.active {
+  background: #4f4738;
+  border-color: #d4a359;
+  color: #d4a359;
+}
+
+/* Color Radios (● 黑, ◑ 随机, ○ 白) */
+.color-radio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.color-chip {
+  background: #48484a;
+  border: 1px solid transparent;
+  color: #d1d1d6;
+  padding: 9px 0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+.color-chip.active {
+  background: #4f4738;
+  border-color: #d4a359;
+  color: #d4a359;
+}
+
+/* Stepper row: 让子, 贴目, 时间 */
+.stepper-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.6fr;
+  gap: 10px;
+}
+.stepper-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stepper-control {
+  display: flex;
+  align-items: center;
+  background: #2c2c2e;
+  border: 1px solid #48484a;
+  border-radius: 6px;
+  height: 36px;
+}
+.step-btn {
+  background: transparent;
+  border: none;
+  color: #8e8e93;
+  width: 28px;
+  height: 100%;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.step-btn:hover {
+  color: #ffffff;
+}
+.step-val {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.time-select {
+  background: #2c2c2e;
+  border: 1px solid #48484a;
+  border-radius: 6px;
+  color: #ffffff;
+  padding: 0 8px;
+  height: 36px;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+}
+
+/* Modal primary action button */
+.modal-footer {
+  padding: 0 20px 20px;
+}
+.btn-modal-action {
+  width: 100%;
+  background: #505c6d;
+  color: #ffffff;
+  border: none;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn-modal-action:hover {
+  background: #5f6e82;
+}
+
+/* ==========================================================================
+   Scoring Modal (终局点目)
+   ========================================================================== */
+
+.scoring-modal-card {
+  background: #ffffff;
+  color: #222222;
+  width: 100%;
+  max-width: 480px;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.scoring-title {
+  font-size: 20px;
+  font-weight: 800;
+  text-align: center;
+  color: #1a1614;
+}
+
+.scoring-tip {
+  font-size: 13px;
+  color: #6b635b;
+  text-align: center;
+  background: #fdf6ec;
+  border: 1px solid #f9e2ae;
+  padding: 8px 12px;
+  border-radius: 6px;
+}
+
+.score-breakdown-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.score-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.score-box-title {
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.score-detail-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: #64748b;
+}
+.score-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 800;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid #cbd5e1;
+  color: #0f172a;
+}
+
+.scoring-result-proclamation {
+  text-align: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--primary-teal);
+  background: #eef7f6;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.scoring-actions {
+  display: flex;
+  gap: 10px;
+}
+.btn-scoring-confirm {
+  flex: 1;
+  background: var(--primary-teal);
+  color: #ffffff;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-scoring-cancel {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ==========================================================================
+   Toast Notification
+   ========================================================================== */
+
+.toast-container {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(30, 30, 35, 0.92);
+  color: #ffffff;
+  padding: 10px 20px;
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  z-index: 2000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.toast-container.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-6px);
+}
+
+/* ==========================================================================
+   Responsive Adaptations (Mobile Friendly)
+   ========================================================================== */
+
+@media (max-width: 640px) {
+  .app-header {
+    padding: 8px 12px;
+  }
+  .brand-title {
+    font-size: 16px;
+  }
+  .board-title-group h2 {
+    font-size: 20px;
+  }
+  .main-stage {
+    padding: 10px;
+  }
+  .stepper-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .stepper-row .stepper-item:last-child {
+    grid-column: span 2;
+  }
+}

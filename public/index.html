@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>围棋在线 - 随时随地下围棋 · 对战与教学摆棋</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-icon">
+        <span class="b-dot">●</span>
+        <span class="w-dot">○</span>
+      </div>
+      <span class="brand-title">围棋在线</span>
+      <span id="app-mode-badge" class="mode-badge match">⚔️ 对战模式</span>
+    </div>
+
+    <div class="header-actions">
+      <div id="room-tag" class="room-tag">
+        <span>房间: <strong id="room-id-display">------</strong></span>
+        <span id="role-display" style="color: var(--primary-teal);">(观战)</span>
+      </div>
+      <button id="btn-copy-link" class="btn-header primary" title="复制好友邀请链接">
+        <span>🔗 邀请好友</span>
+      </button>
+      <button id="btn-open-settings" class="btn-header" title="创建新对局设置">
+        <span>⚙️ 新开局</span>
+      </button>
+      <button id="btn-audio-toggle" class="btn-header" title="落子音效开关">
+        <span id="audio-icon">🔊</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Board Stage (Figure 2 Style) -->
+  <main class="main-stage">
+
+    <!-- Board Header Row -->
+    <div class="board-header-row">
+      <div class="board-title-group">
+        <h2 id="board-title">9 × 9 棋盘</h2>
+        <p id="board-subtitle">点击交叉点落子，黑白双方轮流进行。</p>
+      </div>
+
+      <!-- Quick board size switches -->
+      <div class="board-size-switches">
+        <button class="board-size-btn active" data-size="9">9路</button>
+        <button class="board-size-btn" data-size="13">13路</button>
+        <button class="board-size-btn" data-size="19">19路</button>
+      </div>
+    </div>
+
+    <!-- Go Board SVG Wrapper -->
+    <div class="board-wrapper">
+      <div id="board-container" class="board-container">
+        <!-- GoBoardSVG will be rendered here -->
+      </div>
+    </div>
+
+    <!-- Info Bar below Board (Figure 2) -->
+    <div class="board-info-bar">
+      <div class="turn-indicator">
+        <span id="turn-badge" class="stone-badge">●</span>
+        <span id="turn-text">轮到黑棋</span>
+      </div>
+
+      <div id="board-stone-count" class="board-counts">
+        棋盘上 0 子
+      </div>
+
+      <div id="board-captures-count" class="captures-count">
+        提子: 黑 0 · 白 0
+      </div>
+
+      <!-- Match timers (hidden if unlimited) -->
+      <div id="clocks-box" class="clocks-container" style="display: none;">
+        <div id="black-clock" class="player-clock-box">
+          <span>● 黑:</span>
+          <span id="black-time">--:--</span>
+        </div>
+        <div id="white-clock" class="player-clock-box">
+          <span>○ 白:</span>
+          <span id="white-time">--:--</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status prompt toast text -->
+    <div id="status-message" class="status-toast">
+      准备开始。黑棋先行。
+    </div>
+
+    <!-- FIGURE 2: Teaching Mode Controls (Blue Dashed Box) -->
+    <section id="teach-mode-panel" class="teach-mode-panel" style="display: none;">
+      <!-- Row 1: 摆棋模式 -->
+      <div class="teach-row-mode">
+        <span class="teach-label">摆棋模式</span>
+        <div class="radio-group">
+          <label class="radio-chip" id="chip-black-only">
+            <input type="radio" name="teach-color" value="black_only">
+            <span>● 只下黑子</span>
+          </label>
+          <label class="radio-chip" id="chip-white-only">
+            <input type="radio" name="teach-color" value="white_only">
+            <span>○ 只下白子</span>
+          </label>
+          <label class="radio-chip active" id="chip-alternate">
+            <input type="radio" name="teach-color" value="alternate" checked>
+            <span>◑ 正常交替</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Row 2: 动作按钮组 (停着, 撤销, 重做, 重新开始) -->
+      <div class="teach-row-actions">
+        <button id="btn-teach-pass" class="btn-teach primary">停着</button>
+        <button id="btn-teach-undo" class="btn-teach">撤销</button>
+        <button id="btn-teach-redo" class="btn-teach">重做</button>
+        <button id="btn-teach-reset" class="btn-teach">重新开始</button>
+        <button id="btn-toggle-numbers" class="btn-teach" style="margin-left: auto;">🔢 显示手数</button>
+        <button id="btn-teach-scoring" class="btn-teach">📊 试算点目</button>
+      </div>
+
+      <!-- Row 3: 历史步数与试下不同分支控制器 -->
+      <div class="teach-step-nav">
+        <span class="step-nav-label">步数导航:</span>
+        <button id="btn-step-first" class="btn-step" title="回到第一手">|&lt;</button>
+        <button id="btn-step-prev" class="btn-step" title="上一手">&lt;</button>
+        <span id="step-indicator" style="font-size: 13px; font-weight: 700; color: #1e3a8a; min-width: 70px; text-align: center;">第 0 / 0 手</span>
+        <button id="btn-step-next" class="btn-step" title="下一手">&gt;</button>
+        <button id="btn-step-last" class="btn-step" title="跳到最新一手">&gt;|</button>
+        <span style="font-size: 12px; color: #64748b; margin-left: 8px;">(可跳回任意手尝试不同下法)</span>
+      </div>
+    </section>
+
+    <!-- Normal Match Mode Controls -->
+    <section id="match-mode-panel" class="match-mode-panel">
+      <div class="match-action-group">
+        <button id="btn-match-pass" class="btn-teach primary">停着</button>
+        <button id="btn-match-score" class="btn-teach">终局点目</button>
+        <button id="btn-match-resign" class="btn-teach" style="color: #dc2626;">认输</button>
+      </div>
+      <div style="font-size: 13px; color: var(--text-muted);">
+        双方连续停着或点击“终局点目”将进入胜负判定
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ==========================================================================
+       FIGURE 1: Match Setup Dialog ("与好友对局" 弹窗)
+       ========================================================================== -->
+  <div id="match-setup-modal" class="modal-backdrop">
+    <div class="match-modal-card">
+      <div class="modal-header">
+        <h3>与好友对局</h3>
+        <button id="btn-close-modal" class="modal-close-btn">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Top Tabs (邀请好友 / 对弈) -->
+        <div class="modal-tabs">
+          <button id="tab-invite" class="modal-tab-btn active">邀请好友</button>
+          <button id="tab-settings" class="modal-tab-btn">对弈设置</button>
+        </div>
+
+        <!-- Mode selection (对战 vs 教学) -->
+        <div class="form-item">
+          <label class="form-label">游戏模式</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <button id="mode-opt-match" class="size-toggle-btn active" type="button">⚔️ 正规对战</button>
+            <button id="mode-opt-teach" class="size-toggle-btn" type="button">🎓 教学摆棋</button>
+          </div>
+        </div>
+
+        <!-- Invite Link section -->
+        <div id="invite-section" class="form-item">
+          <label class="form-label">选择要邀请的好友</label>
+          <div class="invite-link-row">
+            <input type="text" id="invite-url-input" class="invite-input" readonly value="获取中...">
+            <button id="btn-modal-copy" class="btn-copy-invite" type="button">复制链接</button>
+          </div>
+          <span style="font-size: 12px; color: #9ca3af;">发给朋友，点击链接即可随时随地在手机或电脑加入对局！</span>
+        </div>
+
+        <!-- Board size toggle (9x9, 13x13, 19x19) -->
+        <div class="form-item">
+          <label class="form-label">棋盘路数</label>
+          <div class="board-size-grid">
+            <button class="size-toggle-btn" data-size="9" type="button">9×9</button>
+            <button class="size-toggle-btn" data-size="13" type="button">13×13</button>
+            <button class="size-toggle-btn active" data-size="19" type="button">19×19</button>
+          </div>
+        </div>
+
+        <!-- Color preference (黑, 随机, 白) -->
+        <div class="form-item">
+          <label class="form-label">执子选择</label>
+          <div class="color-radio-grid">
+            <div class="color-chip active" data-color="black">
+              <span>● 黑</span>
+            </div>
+            <div class="color-chip" data-color="random">
+              <span>◑ 随机</span>
+            </div>
+            <div class="color-chip" data-color="white">
+              <span>○ 白</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Steppers: 让子, 贴目, 时间 -->
+        <div class="stepper-row">
+          <!-- 让子 -->
+          <div class="stepper-item">
+            <label class="form-label">让子</label>
+            <div class="stepper-control">
+              <button id="btn-handicap-minus" class="step-btn" type="button">−</button>
+              <span id="handicap-val" class="step-val">0</span>
+              <button id="btn-handicap-plus" class="step-btn" type="button">+</button>
+            </div>
+          </div>
+
+          <!-- 贴目 -->
+          <div class="stepper-item">
+            <label class="form-label">贴目</label>
+            <div class="stepper-control">
+              <button id="btn-komi-minus" class="step-btn" type="button">−</button>
+              <span id="komi-val" class="step-val">6.5</span>
+              <button id="btn-komi-plus" class="step-btn" type="button">+</button>
+            </div>
+          </div>
+
+          <!-- 时间 -->
+          <div class="stepper-item">
+            <label class="form-label">时间</label>
+            <select id="time-control-select" class="time-select">
+              <option value="none">无时间限制</option>
+              <option value="1m10s">1分钟 + 10秒</option>
+              <option value="1m20s">1分钟 + 20秒</option>
+              <option value="15m20s">15分钟 + 20秒</option>
+              <option value="custom">自定义 (5分+10秒)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-submit-match" class="btn-modal-action" type="button">发送邀请 / 开始对弈</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       Scoring Modal (终局点目)
+       ========================================================================== -->
+  <div id="scoring-modal" class="modal-backdrop">
+    <div class="scoring-modal-card">
+      <h3 class="scoring-title">🏁 终局点目判断</h3>
+      <div class="scoring-tip">
+        💡 提示：在棋盘上<strong>直接点击死子</strong>可将其标记/取消（带 ✕ 的死子将自动计入对方地域），目数实时重新统计。
+      </div>
+
+      <div class="score-breakdown-grid">
+        <!-- Black Score Box -->
+        <div class="score-box">
+          <div class="score-box-title">
+            <span>● 黑方得分</span>
+          </div>
+          <div class="score-detail-row">
+            <span>活子数:</span>
+            <span id="score-b-alive">0</span>
+          </div>
+          <div class="score-detail-row">
+            <span>围地目数:</span>
+            <span id="score-b-territory">0</span>
+          </div>
+          <div class="score-detail-row">
+            <span>提子 + 对方死子:</span>
+            <span id="score-b-captures">0</span>
+          </div>
+          <div class="score-total-row">
+            <span>数目法总计:</span>
+            <span id="score-b-total">0</span>
+          </div>
+        </div>
+
+        <!-- White Score Box -->
+        <div class="score-box">
+          <div class="score-box-title">
+            <span>○ 白方得分</span>
+          </div>
+          <div class="score-detail-row">
+            <span>活子数:</span>
+            <span id="score-w-alive">0</span>
+          </div>
+          <div class="score-detail-row">
+            <span>围地目数:</span>
+            <span id="score-w-territory">0</span>
+          </div>
+          <div class="score-detail-row">
+            <span>贴目 (Komi):</span>
+            <span id="score-w-komi">6.5</span>
+          </div>
+          <div class="score-total-row">
+            <span>数目法总计:</span>
+            <span id="score-w-total">6.5</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="scoring-proclamation" class="scoring-result-proclamation">
+        正在计算点目结果...
+      </div>
+
+      <div class="scoring-actions">
+        <button id="btn-scoring-confirm" class="btn-scoring-confirm">确认点目结果</button>
+        <button id="btn-scoring-close" class="btn-scoring-cancel">返回棋盘继续标记</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Toast Notification -->
+  <div id="app-toast" class="toast-container">
+    提示信息
+  </div>
+
+  <!-- Scripts -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "weiqi-online",
+  "version": "1.0.0",
+  "description": "Lightweight Online Go (Weiqi) with Match and Teaching Modes",
+  "main": "server/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node test_rules.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: weiqi-online
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: node server/server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
