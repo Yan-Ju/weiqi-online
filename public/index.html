@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>围棋在线 - 随时随地下围棋 · 对战与教学摆棋</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
@@ -149,6 +149,12 @@
       </div>
     </section>
 
+    <section class="match-mode-panel" aria-label="对局操作">
+      <button id="btn-estimate" class="btn-teach" disabled>形势估算</button>
+      <button id="btn-new-game" class="btn-teach" disabled>开始新一局</button>
+      <button id="btn-show-scoring" class="btn-teach" hidden>查看点目结果</button>
+      <button id="btn-resume-game" class="btn-teach" hidden>取消点目，继续对局</button>
+    </section>
   </main>
 
   <!-- ==========================================================================
@@ -260,9 +266,9 @@
        ========================================================================== -->
   <div id="scoring-modal" class="modal-backdrop">
     <div class="scoring-modal-card">
-      <h3 class="scoring-title">🏁 终局点目判断</h3>
-      <div class="scoring-tip">
-        💡 提示：在棋盘上<strong>直接点击死子</strong>可将其标记/取消（带 ✕ 的死子将自动计入对方地域），目数实时重新统计。
+      <h3 class="scoring-title">🏁 点目试算 / 终局确认</h3>
+      <div id="scoring-tip" class="scoring-tip">
+        此处统计已围地域，不是 AI 形势预测。中盘、双活及死活未定时不可直接当作胜负结论。双方应确认死子与终局后再确认。<br>💡 提示：在棋盘上<strong>直接点击死子</strong>可将其标记/取消（带 ✕ 的死子将自动计入对方地域），目数实时重新统计。
       </div>
 
       <div class="score-breakdown-grid">
@@ -319,6 +325,7 @@
 
       <div class="scoring-actions">
         <button id="btn-scoring-confirm" class="btn-scoring-confirm">确认点目结果</button>
+        <button id="btn-scoring-resume" class="btn-scoring-cancel">取消点目，继续对局</button>
         <button id="btn-scoring-close" class="btn-scoring-cancel">返回棋盘继续标记</button>
       </div>
     </div>
@@ -329,7 +336,17 @@
     提示信息
   </div>
 
+  <div id="confirmation-modal" class="modal-backdrop" style="z-index: 1100;">
+    <section class="scoring-modal-card" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
+      <h3 id="confirmation-title">确认操作</h3>
+      <p id="confirmation-message"></p>
+      <div class="scoring-actions">
+        <button id="confirmation-cancel" class="btn-scoring-cancel">取消</button>
+        <button id="confirmation-ok" class="btn-scoring-confirm">确定继续</button>
+      </div>
+    </section>
+  </div>
   <!-- Scripts -->
-  <script type="module" src="app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -838,3 +838,9 @@ body {
     grid-column: span 2;
   }
 }
+
+[hidden] { display: none !important; }
+.modal-backdrop { visibility: hidden; }
+.modal-backdrop.active { visibility: visible; }
+.scoring-modal-card, .match-modal-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
+.scoring-actions { flex-wrap: wrap; }
