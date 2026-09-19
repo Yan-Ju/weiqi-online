@@ -6,7 +6,7 @@
 export class GoRules {
   constructor(size = 19, handicap = 0, komi = 6.5) {
     this.size = [9, 13, 19].includes(Number(size)) ? Number(size) : 19;
-    this.komi = Number(komi) || 6.5;
+    this.komi = Number.isFinite(Number(komi)) ? Number(komi) : 6.5;
     this.handicap = Number(handicap) || 0;
     this.reset();
   }
@@ -32,7 +32,7 @@ export class GoRules {
   }
 
   isValidCoord(r, c) {
-    return r >= 0 && r < this.size && c >= 0 && c < this.size;
+    return Number.isInteger(r) && Number.isInteger(c) && r >= 0 && r < this.size && c >= 0 && c < this.size;
   }
 
   getNeighbors(r, c) {
@@ -144,6 +144,7 @@ export class GoRules {
     const prevCaptures = { ...this.captures };
     const prevKo = this.ko ? [...this.ko] : null;
     const prevTurn = this.currentTurn;
+    const prevPasses = this.consecutivePasses;
 
     // Place stone
     this.board[r][c] = color;
@@ -183,6 +184,7 @@ export class GoRules {
       prevCaptures,
       prevKo,
       prevTurn,
+      prevPasses,
       step: this.history.length + 1
     };
 
@@ -201,10 +203,11 @@ export class GoRules {
   }
 
   pass(color = this.currentTurn) {
+    const prevKo = this.ko ? [...this.ko] : null;
+    const prevTurn = this.currentTurn;
+    const prevPasses = this.consecutivePasses;
     this.consecutivePasses += 1;
     this.ko = null;
-
-    const prevTurn = this.currentTurn;
     this.currentTurn = color === 1 ? 2 : 1;
 
     const moveRecord = {
@@ -212,8 +215,9 @@ export class GoRules {
       color,
       prevBoard: this.cloneBoard(),
       prevCaptures: { ...this.captures },
-      prevKo: null,
+      prevKo,
       prevTurn,
+      prevPasses,
       step: this.history.length + 1
     };
 
@@ -239,7 +243,7 @@ export class GoRules {
     this.captures = { ...lastMove.prevCaptures };
     this.ko = lastMove.prevKo ? [...lastMove.prevKo] : null;
     this.currentTurn = lastMove.prevTurn;
-    this.consecutivePasses = 0;
+    this.consecutivePasses = lastMove.prevPasses ?? 0;
     return true;
   }
 
@@ -248,6 +252,7 @@ export class GoRules {
     const moveToRedo = this.redoStack.pop();
 
     if (moveToRedo.type === 'move') {
+      this.consecutivePasses = 0;
       this.board[moveToRedo.r][moveToRedo.c] = moveToRedo.color;
       if (moveToRedo.captured && moveToRedo.captured.length > 0) {
         for (const [cr, cc] of moveToRedo.captured) {
@@ -258,6 +263,7 @@ export class GoRules {
       this.ko = moveToRedo.ko ? [...moveToRedo.ko] : null;
       this.currentTurn = moveToRedo.color === 1 ? 2 : 1;
     } else if (moveToRedo.type === 'pass') {
+      this.ko = null;
       this.currentTurn = moveToRedo.color === 1 ? 2 : 1;
       this.consecutivePasses += 1;
     }
@@ -270,22 +276,9 @@ export class GoRules {
    * Jump to a specific step (1 to history.length, or 0 for empty board)
    */
   jumpToStep(targetStep) {
-    if (targetStep < 0 || targetStep > this.history.length + this.redoStack.length) return false;
-
-    // First undo all to step 0
-    const fullHistory = [...this.history, ...this.redoStack.reverse()];
-    this.reset();
-
-    for (let i = 0; i < targetStep && i < fullHistory.length; i++) {
-      const item = fullHistory[i];
-      if (item.type === 'move') {
-        this.playMove(item.r, item.c, item.color);
-      } else if (item.type === 'pass') {
-        this.pass(item.color);
-      }
-    }
-
-    this.redoStack = fullHistory.slice(targetStep);
+    if (!Number.isInteger(targetStep) || targetStep < 0 || targetStep > this.history.length + this.redoStack.length) return false;
+    while (this.history.length > targetStep) this.undo();
+    while (this.history.length < targetStep) this.redo();
     return true;
   }
 
@@ -348,7 +341,7 @@ export class GoRules {
   }
 
   toggleDeadStone(r, c) {
-    if (this.board[r][c] === 0) return null;
+    if (!this.isValidCoord(r, c) || this.board[r][c] === 0) return null;
     const group = this.getGroup(r, c);
     const key = `${r},${c}`;
     const willBeDead = !this.deadStones[key];
@@ -469,16 +462,50 @@ export class GoRules {
         black: blackJapanese,
         white: whiteJapanese,
         diff: japaneseDiff,
-        winner: japaneseDiff > 0 ? 'black' : 'white',
-        winnerDesc: japaneseDiff > 0 ? `黑胜 ${Math.abs(japaneseDiff)} 目` : `白胜 ${Math.abs(japaneseDiff)} 目`
+        winner: japaneseDiff === 0 ? 'draw' : (japaneseDiff > 0 ? 'black' : 'white'),
+        winnerDesc: japaneseDiff === 0 ? '和棋' : japaneseDiff > 0 ? `黑胜 ${Math.abs(japaneseDiff)} 目` : `白胜 ${Math.abs(japaneseDiff)} 目`
       },
       chinese: {
         black: blackChinese,
         white: whiteChinese,
         diff: chineseDiff,
-        winner: chineseDiff > 0 ? 'black' : 'white',
-        winnerDesc: chineseDiff > 0 ? `黑胜 ${Math.abs(chineseDiff)} 子/目` : `白胜 ${Math.abs(chineseDiff)} 子/目`
+        winner: chineseDiff === 0 ? 'draw' : (chineseDiff > 0 ? 'black' : 'white'),
+        winnerDesc: chineseDiff === 0 ? '和棋' : chineseDiff > 0 ? `黑胜 ${Math.abs(chineseDiff)} 点` : `白胜 ${Math.abs(chineseDiff)} 点`
       }
     };
+  }
+
+  // A bounded, deliberately conservative heuristic, not a life/death or AI engine.
+  // Unlike final scoring, a lone stone must not claim the entire open board.
+  estimatePosition() {
+    const distance = color => {
+      const d = Array.from({ length: this.size }, () => Array(this.size).fill(Infinity));
+      const queue = [];
+      for (let r = 0; r < this.size; r++) for (let c = 0; c < this.size; c++) {
+        if (this.board[r][c] === color) { d[r][c] = 0; queue.push([r, c]); }
+      }
+      for (let i = 0; i < queue.length; i++) {
+        const [r, c] = queue[i];
+        for (const [nr, nc] of this.getNeighbors(r, c)) {
+          if (this.board[nr][nc] !== 0 || d[nr][nc] <= d[r][c] + 1) continue;
+          d[nr][nc] = d[r][c] + 1;
+          queue.push([nr, nc]);
+        }
+      }
+      return d;
+    };
+    const black = distance(1), white = distance(2);
+    const result = { blackAlive: 0, whiteAlive: 0, blackTerritory: 0, whiteTerritory: 0, dameCount: 0, territoryMap: {}, deadStones: {}, deadCount: { 1: 0, 2: 0 }, captures: { ...this.captures }, komi: this.komi, estimated: true };
+    for (let r = 0; r < this.size; r++) for (let c = 0; c < this.size; c++) {
+      if (this.board[r][c]) { result[this.board[r][c] === 1 ? 'blackAlive' : 'whiteAlive']++; continue; }
+      const b = black[r][c], w = white[r][c];
+      const owner = b <= 3 && w - b >= 2 ? 1 : w <= 3 && b - w >= 2 ? 2 : 0;
+      result.territoryMap[`${r},${c}`] = owner;
+      result[owner === 1 ? 'blackTerritory' : owner === 2 ? 'whiteTerritory' : 'dameCount']++;
+    }
+    const score = (b, w) => ({ black: b, white: w, diff: b - w, winnerDesc: b === w ? '估算持平' : `${b > w ? '黑' : '白'}暂领先 ${Math.abs(b - w)} 点（粗估）` });
+    result.japanese = score(result.blackTerritory + this.captures[1], result.whiteTerritory + this.captures[2] + this.komi);
+    result.chinese = score(result.blackTerritory + result.blackAlive, result.whiteTerritory + result.whiteAlive + this.komi);
+    return result;
   }
 }

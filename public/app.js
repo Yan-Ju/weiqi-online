@@ -12,6 +12,31 @@ let selectedSize = 19;
 let selectedColorPref = 'black';
 let handicapVal = 0;
 let komiVal = 6.5;
+let creatingRoom = false;
+let reconnectAttempts = 0;
+let scoringPanelHidden = false;
+let estimatePreview = false;
+
+function sendAction(message) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('连接已断开，正在重连，请稍后重试'); return false; }
+  ws.send(JSON.stringify(message));
+  return true;
+}
+
+// In-page confirmation works consistently on mobile and embedded browsers.
+let pendingConfirmation = null;
+function confirmAction(message) {
+  if (pendingConfirmation) return Promise.resolve(false);
+  document.getElementById('confirmation-message').textContent = message;
+  document.getElementById('confirmation-modal').classList.add('active');
+  document.getElementById('confirmation-cancel').focus();
+  return new Promise(resolve => { pendingConfirmation = resolve; });
+}
+function finishConfirmation(accepted) {
+  document.getElementById('confirmation-modal').classList.remove('active');
+  pendingConfirmation?.(accepted);
+  pendingConfirmation = null;
+}
 
 // Toast helper
 function showToast(msg, duration = 2500) {
@@ -77,19 +102,10 @@ function connectWebSocket() {
 
   ws.onopen = () => {
     console.log('Connected to Go server.');
-    let roomId = getRoomIdFromURL();
-    if (!roomId) {
-      // Generate a temporary room code or create room
-      roomId = 'ROOM' + Math.floor(1000 + Math.random() * 9000);
-    }
-    currentRoomId = roomId;
-    setRoomURL(roomId);
-
-    ws.send(JSON.stringify({
-      type: 'join_room',
-      roomId: currentRoomId,
-      playerName: localStorage.getItem('weiqi_player_name') || '棋友'
-    }));
+    reconnectAttempts = 0;
+    const roomId = getRoomIdFromURL();
+    if (roomId) sendAction({ type: 'join_room', roomId, playerName: localStorage.getItem('weiqi_player_name') || '棋友' });
+    else openSetupModal();
   };
 
   ws.onmessage = (event) => {
@@ -103,15 +119,35 @@ function connectWebSocket() {
 
   ws.onclose = () => {
     console.warn('WS disconnected. Reconnecting in 2s...');
-    setTimeout(connectWebSocket, 2000);
+    creatingRoom = false;
+    document.getElementById('btn-submit-match').disabled = false;
+    showToast('连接已断开，正在重连…');
+    setTimeout(connectWebSocket, Math.min(30000, 1000 * 2 ** reconnectAttempts++));
   };
 }
 
 function handleServerMessage(msg) {
   switch (msg.type) {
+    case 'position_estimate': {
+      estimatePreview = true;
+      openScoringModal(msg.result);
+      break;
+    }
+    case 'new_game': {
+      showToast(msg.restarted ? '新一局已开始' : '已申请新一局，等待另一方点击同意');
+      break;
+    }
     case 'join_success': {
       myRole = msg.role;
       currentRoomId = msg.roomId;
+      setRoomURL(currentRoomId);
+      currentRoomState = null;
+      scoringPanelHidden = false;
+      estimatePreview = false;
+      closeScoringModal();
+      if (creatingRoom) { closeSetupModal(); showToast('房间已创建，点击邀请好友分享链接'); }
+      creatingRoom = false;
+      document.getElementById('btn-submit-match').disabled = false;
       document.getElementById('room-id-display').textContent = '#' + currentRoomId;
       updateRoleDisplay(myRole);
       break;
@@ -119,6 +155,7 @@ function handleServerMessage(msg) {
 
     case 'room_state': {
       applyRoomState(msg.state);
+      if (msg.event) handleServerMessage({ ...msg, type: msg.event });
       break;
     }
 
@@ -131,6 +168,9 @@ function handleServerMessage(msg) {
     }
 
     case 'action_error': {
+      creatingRoom = false;
+      document.getElementById('btn-submit-match').disabled = false;
+      if (msg.code === 'room_missing') { currentRoomState = null; currentRoomId = null; closeScoringModal(); openSetupModal(); }
       sound.playAlertSound();
       showToast('⚠️ ' + msg.reason);
       break;
@@ -144,7 +184,7 @@ function handleServerMessage(msg) {
 
     case 'scoring_started': {
       showToast('🏁 进入终局点目阶段，请标记死子');
-      openScoringModal(msg.result);
+      if (!scoringPanelHidden) openScoringModal(msg.result);
       break;
     }
 
@@ -160,7 +200,7 @@ function handleServerMessage(msg) {
         showToast(`🎉 终局数子裁决：${msg.winnerReason}`, 5000);
         closeScoringModal();
       } else {
-        showToast('您已确认点目，等待对方确认...');
+        showToast('点目确认状态已更新，等待双方确认');
       }
       break;
     }
@@ -183,6 +223,8 @@ function updateRoleDisplay(role) {
 
 function applyRoomState(state) {
   if (!state) return;
+  const wasScoring = currentRoomState?.status === 'scoring';
+  if (!wasScoring && state.status === 'scoring') { scoringPanelHidden = false; estimatePreview = false; }
   currentRoomState = state;
   currentRoomId = state.roomId;
   myRole = state.myRole;
@@ -297,12 +339,28 @@ function applyRoomState(state) {
     statusEl.textContent = `对局进行中 (${roleMsg})。${turnMsg}。`;
   } else if (state.status === 'scoring') {
     statusEl.textContent = '🏁 终局点目阶段：点击棋盘死子进行标记，确认无误后点击确认。';
-    if (!document.getElementById('scoring-modal').classList.contains('active')) {
+    updateScoringUI(state.scoringState.result);
+    if (!scoringPanelHidden && !document.getElementById('scoring-modal').classList.contains('active')) {
       openScoringModal(state.scoringState.result);
     }
+  } else if (state.status === 'paused') {
+    statusEl.textContent = '对手已离开，对局与计时暂停，等待重新加入。';
   } else if (state.status === 'finished') {
     statusEl.textContent = `🏆 对局结束：${state.winnerReason || (state.winner === 'black' ? '黑胜' : '白胜')}`;
   }
+
+  if (state.status !== 'scoring' && !estimatePreview) closeScoringModal();
+  document.getElementById('btn-estimate').disabled = state.status === 'scoring';
+  const isPlayer = myRole === 'black' || myRole === 'white';
+  document.getElementById('btn-show-scoring').hidden = state.status !== 'scoring';
+  document.getElementById('btn-resume-game').hidden = state.status !== 'scoring';
+  document.getElementById('btn-resume-game').disabled = !isPlayer;
+  document.getElementById('btn-scoring-resume').disabled = !isPlayer;
+  document.getElementById('btn-scoring-confirm').disabled = estimatePreview || !isPlayer || !!state.scoringState?.agreed?.[myRole];
+  document.getElementById('btn-new-game').disabled = !isPlayer;
+  document.getElementById('btn-new-game').textContent = Object.values(state.newGameAgreed || {}).some(Boolean) ? '同意开始新一局' : '开始新一局';
+  for (const id of ['btn-match-pass', 'btn-match-score', 'btn-match-resign', 'btn-teach-pass', 'btn-teach-scoring']) document.getElementById(id).disabled = !isPlayer || state.status !== 'playing';
+  if (Object.values(state.newGameAgreed || {}).some(Boolean)) statusEl.textContent += ' 有玩家申请新一局，请点击“同意开始新一局”。';
 
   // Teaching mode controls update
   if (state.mode === 'teach' && state.teachState) {
@@ -329,20 +387,20 @@ function handleIntersectionClick(r, c) {
 
   if (currentRoomState && currentRoomState.status === 'scoring') {
     // Scoring dead stone toggle
-    ws.send(JSON.stringify({
+    sendAction({
       type: 'toggle_dead',
       r,
       c
-    }));
+    });
     return;
   }
 
   // Play move
-  ws.send(JSON.stringify({
+  sendAction({
     type: 'move',
     r,
     c
-  }));
+  });
 }
 
 // ==========================================================================
@@ -350,6 +408,7 @@ function handleIntersectionClick(r, c) {
 // ==========================================================================
 
 function openSetupModal() {
+  document.querySelectorAll('.board-size-grid .size-toggle-btn').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.size) === selectedSize));
   const modal = document.getElementById('match-setup-modal');
   modal.classList.add('active');
   const url = `${window.location.protocol}//${window.location.host}/?room=${currentRoomId || 'ROOM'}`;
@@ -433,61 +492,24 @@ function setupModalEventListeners() {
   });
 
   // Submit modal (Create & Invite)
-  document.getElementById('btn-submit-match').addEventListener('click', async () => {
-    const timeControl = document.getElementById('time-control-select').value;
-    const body = {
-      boardSize: selectedSize,
-      mode: selectedMode,
-      colorPref: selectedColorPref,
-      handicap: handicapVal,
-      komi: komiVal,
-      timeControl
-    };
-
-    try {
-      const resp = await fetch('/api/create-room', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const data = await resp.json();
-      if (data.success) {
-        currentRoomId = data.roomId;
-        setRoomURL(data.roomId);
-        closeSetupModal();
-        copyLinkAction();
-
-        // Join room in WS
-        ws.send(JSON.stringify({
-          type: 'join_room',
-          roomId: currentRoomId,
-          playerName: localStorage.getItem('weiqi_player_name') || '房主'
-        }));
-      }
-    } catch (err) {
-      console.error('Failed to create room:', err);
+  document.getElementById('btn-submit-match').addEventListener('click', () => {
+    if (creatingRoom) return;
+    if (sendAction({ type: 'create_room', playerName: localStorage.getItem('weiqi_player_name') || '房主', config: {
+      boardSize: selectedSize, mode: selectedMode, colorPref: selectedColorPref,
+      handicap: handicapVal, komi: komiVal, timeControl: document.getElementById('time-control-select').value
+    } })) {
+      creatingRoom = true;
+      document.getElementById('btn-submit-match').disabled = true;
     }
   });
 
-  // Board switches at top right (Figure 2)
   document.querySelectorAll('.board-size-switches .board-size-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const s = Number(btn.dataset.size);
-      if (currentRoomState && currentRoomState.mode === 'teach') {
-        // In teach mode, can quickly change size
-        selectedSize = s;
-        board.setSize(s);
-        updateBoardTitleAndSwitches(s);
-        fetch('/api/create-room', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ roomId: currentRoomId, boardSize: s, mode: 'teach' })
-        }).then(() => {
-          ws.send(JSON.stringify({ type: 'join_room', roomId: currentRoomId }));
-        });
-      } else {
-        openSetupModal();
-      }
+    btn.addEventListener('click', async () => {
+      const size = Number(btn.dataset.size);
+      if (!currentRoomState) { selectedSize = size; openSetupModal(); return; }
+      if (size === currentRoomState.boardSize) return;
+      if (currentRoomState.mode === 'teach' && currentRoomState.historyLength && !await confirmAction('切换棋盘将清空当前摆棋，继续吗？')) return;
+      sendAction({ type: 'change_board_size', boardSize: size });
     });
   });
 
@@ -529,54 +551,54 @@ function setupTeachPanelEventListeners() {
       });
 
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
+        sendAction({
           type: 'teach_action',
           action: 'set_placement_mode',
           payload: { mode }
-        }));
+        });
       }
     });
   });
 
   // Pass, Undo, Redo, Reset
   document.getElementById('btn-teach-pass').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'pass' }));
+    sendAction({ type: 'pass' });
   });
 
   document.getElementById('btn-teach-undo').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'teach_action', action: 'undo' }));
+    sendAction({ type: 'teach_action', action: 'undo' });
   });
 
   document.getElementById('btn-teach-redo').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'teach_action', action: 'redo' }));
+    sendAction({ type: 'teach_action', action: 'redo' });
   });
 
-  document.getElementById('btn-teach-reset').addEventListener('click', () => {
-    if (confirm('确定要清空棋盘重新开始吗？')) {
-      ws.send(JSON.stringify({ type: 'teach_action', action: 'reset' }));
+  document.getElementById('btn-teach-reset').addEventListener('click', async () => {
+    if (await confirmAction('确定要清空棋盘重新开始吗？')) {
+      sendAction({ type: 'teach_action', action: 'reset' });
     }
   });
 
   // Step Navigator (|<, <, >, >|)
   document.getElementById('btn-step-first').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'teach_action', action: 'jump_to_step', payload: { step: 0 } }));
+    sendAction({ type: 'teach_action', action: 'jump_to_step', payload: { step: 0 } });
   });
   document.getElementById('btn-step-prev').addEventListener('click', () => {
     if (currentRoomState) {
       const target = Math.max(0, currentRoomState.historyLength - 1);
-      ws.send(JSON.stringify({ type: 'teach_action', action: 'jump_to_step', payload: { step: target } }));
+      sendAction({ type: 'teach_action', action: 'jump_to_step', payload: { step: target } });
     }
   });
   document.getElementById('btn-step-next').addEventListener('click', () => {
     if (currentRoomState) {
       const target = currentRoomState.historyLength + 1;
-      ws.send(JSON.stringify({ type: 'teach_action', action: 'jump_to_step', payload: { step: target } }));
+      sendAction({ type: 'teach_action', action: 'jump_to_step', payload: { step: target } });
     }
   });
   document.getElementById('btn-step-last').addEventListener('click', () => {
     if (currentRoomState) {
       const target = currentRoomState.historyLength + currentRoomState.redoLength;
-      ws.send(JSON.stringify({ type: 'teach_action', action: 'jump_to_step', payload: { step: target } }));
+      sendAction({ type: 'teach_action', action: 'jump_to_step', payload: { step: target } });
     }
   });
 
@@ -590,21 +612,21 @@ function setupTeachPanelEventListeners() {
 
   // Teaching scoring check
   document.getElementById('btn-teach-scoring').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'request_scoring' }));
+    sendAction({ type: 'request_scoring' });
   });
 
   // Match Mode Action Buttons
   document.getElementById('btn-match-pass').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'pass' }));
+    sendAction({ type: 'pass' });
   });
 
   document.getElementById('btn-match-score').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'request_scoring' }));
+    sendAction({ type: 'request_scoring' });
   });
 
-  document.getElementById('btn-match-resign').addEventListener('click', () => {
-    if (confirm('确定认输吗？')) {
-      ws.send(JSON.stringify({ type: 'resign' }));
+  document.getElementById('btn-match-resign').addEventListener('click', async () => {
+    if (await confirmAction('确定认输吗？')) {
+      sendAction({ type: 'resign' });
     }
   });
 }
@@ -615,12 +637,18 @@ function setupTeachPanelEventListeners() {
 
 function openScoringModal(result) {
   const modal = document.getElementById('scoring-modal');
+  document.querySelector('.scoring-title').textContent = estimatePreview ? '形势粗估（当前盘面快照）' : '点目试算 / 终局确认';
+  document.getElementById('btn-scoring-confirm').hidden = estimatePreview;
+  document.getElementById('btn-scoring-resume').hidden = estimatePreview;
+  document.getElementById('btn-scoring-close').textContent = estimatePreview ? '关闭估算，继续对局' : '返回棋盘继续标记';
   modal.classList.add('active');
+  document.getElementById('scoring-tip').textContent = estimatePreview ? '根据棋子距离粗略估计影响范围；不判断死活、双活或劫争。结果仅供学习参考，对局和计时不会暂停。' : '终局点目：双方确认死活后统计围地。关闭此面板后，点击棋子标记或取消死子；也可以取消点目继续对局。双活等特殊局面请双方另行核对。';
   if (result) updateScoringUI(result);
 }
 
 function closeScoringModal() {
   document.getElementById('scoring-modal').classList.remove('active');
+  estimatePreview = false;
 }
 
 function updateScoringUI(res) {
@@ -637,19 +665,26 @@ function updateScoringUI(res) {
   document.getElementById('score-w-total').textContent = res.japanese.white;
 
   const proclamation = document.getElementById('scoring-proclamation');
-  proclamation.textContent = `数目法：${res.japanese.winnerDesc} ｜ 数子法：${res.chinese.winnerDesc}`;
+  proclamation.textContent = res.estimated ? `粗估：${res.chinese.winnerDesc}；未定区域 ${res.dameCount} 点。未判断死活，不作为终局结果。对局与计时继续。` : `数目法：${res.japanese.winnerDesc} ｜ 数子法：${res.chinese.winnerDesc}`;
 }
 
 function setupScoringEventListeners() {
-  document.getElementById('btn-scoring-close').addEventListener('click', closeScoringModal);
+  document.getElementById('btn-estimate').addEventListener('click', () => sendAction({ type: 'request_estimate' }));
+  document.getElementById('btn-scoring-close').addEventListener('click', () => { scoringPanelHidden = true; closeScoringModal(); });
+  document.getElementById('btn-show-scoring').addEventListener('click', () => { estimatePreview = false; scoringPanelHidden = false; openScoringModal(currentRoomState?.scoringState?.result); });
+  for (const id of ['btn-resume-game', 'btn-scoring-resume']) document.getElementById(id).addEventListener('click', () => sendAction({ type: 'resume_game' }));
+  document.getElementById('btn-new-game').addEventListener('click', async () => { if (await confirmAction('开始新一局会清空棋盘；对战双方在场时须双方同意。继续吗？')) sendAction({ type: 'new_game' }); });
 
   document.getElementById('btn-scoring-confirm').addEventListener('click', () => {
-    ws.send(JSON.stringify({ type: 'confirm_scoring' }));
+    sendAction({ type: 'confirm_scoring' });
   });
 }
 
 // Initialization on DOM Load
 window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('confirmation-ok').addEventListener('click', () => finishConfirmation(true));
+  document.getElementById('confirmation-cancel').addEventListener('click', () => finishConfirmation(false));
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && pendingConfirmation) finishConfirmation(false); });
   initBoard(19);
   setupModalEventListeners();
   setupTeachPanelEventListeners();

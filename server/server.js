@@ -1,237 +1,135 @@
 import express from 'express';
-import http from 'http';
+import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath } from 'node:url';
 import { RoomManager } from './roomManager.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: 8192 });
+const rooms = new RoomManager();
+app.use(express.json({ limit: '8kb' }));
+app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
+app.get('/room/:roomId', (_req, res) => res.sendFile(fileURLToPath(new URL('../public/index.html', import.meta.url))));
+app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.1.0' }));
 
-const roomManager = new RoomManager();
-
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '../public')));
-
-// Support clean URLs like /room/ABC123
-app.get('/room/:roomId', (req, res) => {
-  res.sendFile(path.join(__dirname, '../public/index.html'));
-});
-
-// API to create room
+// Bound anonymous creation as well as the lifetime of never-joined rooms.
+const creationRates = new Map();
 app.post('/api/create-room', (req, res) => {
-  const room = roomManager.createRoom(req.body);
-  res.json({
-    success: true,
-    roomId: room.roomId,
-    mode: room.mode,
-    boardSize: room.boardSize
-  });
+  const key = req.socket.remoteAddress;
+  const now = Date.now();
+  let rate = creationRates.get(key);
+  if (!rate || now - rate.start > 60000) rate = { start: now, count: 0 };
+  creationRates.set(key, rate);
+  if (++rate.count > 60) return res.status(429).json({ success: false, reason: '创建过于频繁，请稍后再试' });
+  try {
+    const room = rooms.createRoom(req.body);
+    res.json({ success: true, roomId: room.roomId, mode: room.mode, boardSize: room.boardSize });
+  } catch (err) { res.status(400).json({ success: false, reason: err.message }); }
 });
-
-// API to get room info
 app.get('/api/room/:roomId', (req, res) => {
-  const room = roomManager.getRoom(req.params.roomId);
-  if (!room) {
-    return res.status(404).json({ error: '房间不存在' });
-  }
-  res.json(roomManager.getRoomSnapshot(room.roomId));
+  const state = rooms.getRoomSnapshot(req.params.roomId);
+  if (!state) return res.status(404).json({ error: '房间不存在或已关闭' });
+  res.json(state);
 });
 
-// Broadcast room state to all clients in the room
-function broadcastRoom(roomId, customEvent = null, payload = {}) {
-  const room = roomManager.getRoom(roomId);
+function send(ws, message) {
+  if (ws.readyState !== WebSocket.OPEN) return;
+  if (ws.bufferedAmount > 1024 * 1024) return ws.terminate();
+  ws.send(JSON.stringify(message));
+}
+function broadcast(id, event = null, payload = {}) {
+  const room = rooms.getRoom(id);
   if (!room) return;
-
-  const clients = [...wss.clients].filter(c => c.roomId === roomId && c.readyState === WebSocket.OPEN);
-
-  for (const client of clients) {
-    const snapshot = roomManager.getRoomSnapshot(roomId, client);
-    const msg = {
-      type: 'room_state',
-      state: snapshot,
-      event: customEvent,
-      ...payload
-    };
-    client.send(JSON.stringify(msg));
+  const snapshot = rooms.getRoomSnapshot(id);
+  for (const ws of [room.players.black, room.players.white, ...room.players.spectators]) {
+    if (ws) send(ws, { type: 'room_state', event, ...payload, state: { ...snapshot, myRole: ws.role } });
   }
 }
+function join(ws, id, name) {
+  if (typeof id !== 'string' || !/^[A-Z0-9]{4,12}$/.test(id) || !rooms.getRoom(id)) {
+    send(ws, { type: 'action_error', code: 'room_missing', reason: '房间不存在或已关闭，请创建新房间' });
+    return;
+  }
+  const previous = ws.roomId;
+  const role = rooms.joinRoom(id, ws, name);
+  if (previous && previous !== id) broadcast(previous, 'player_left');
+  send(ws, { type: 'join_success', role, roomId: id });
+  broadcast(id, 'player_joined');
+}
 
-// WebSocket message handling
-wss.on('connection', (ws) => {
+wss.on('connection', ws => {
   ws.isAlive = true;
+  ws.rate = { start: Date.now(), count: 0 };
   ws.on('pong', () => { ws.isAlive = true; });
-
-  ws.on('message', (data) => {
+  ws.on('error', () => {});
+  ws.on('message', data => {
+    if (Date.now() - ws.rate.start > 1000) ws.rate = { start: Date.now(), count: 0 };
+    if (++ws.rate.count > 50) return ws.close(1008, 'Too many messages');
     try {
-      const message = JSON.parse(data.toString());
-      handleClientMessage(ws, message);
-    } catch (err) {
-      console.error('Error parsing client message:', err);
-    }
+      const msg = JSON.parse(data.toString());
+      if (!msg || typeof msg !== 'object' || Array.isArray(msg)) throw new Error('消息格式无效');
+      if (msg.type === 'join_room') return join(ws, msg.roomId, msg.playerName);
+      if (msg.type === 'create_room') {
+        if (ws.lastCreate && Date.now() - ws.lastCreate < 1000) throw new Error('创建过于频繁，请稍后再试');
+        const room = rooms.createRoom(msg.config || {});
+        ws.lastCreate = Date.now();
+        join(ws, room.roomId, msg.playerName);
+        return;
+      }
+      if (!ws.roomId) throw new Error('请先加入房间');
+      if (msg.type === 'request_estimate') {
+        const room = rooms.getRoom(ws.roomId);
+        if (!room) throw new Error('房间已关闭');
+        send(ws, { type: 'position_estimate', result: room.game.estimatePosition() });
+        return;
+      }
+      const operations = {
+        move: () => rooms.handleMove(ws, msg.r, msg.c),
+        pass: () => rooms.handlePass(ws),
+        resign: () => rooms.handleResign(ws),
+        teach_action: () => rooms.handleTeachAction(ws, msg.action, msg.payload),
+        request_scoring: () => rooms.startScoring(ws),
+        toggle_dead: () => rooms.toggleDeadStone(ws, msg.r, msg.c),
+        confirm_scoring: () => rooms.confirmScoring(ws),
+        resume_game: () => rooms.resumeGame(ws),
+        new_game: () => rooms.newGame(ws),
+        change_board_size: () => rooms.changeBoardSize(ws, msg.boardSize)
+      };
+      const events = { move: 'move_played', pass: 'pass_played', resign: 'game_resigned', request_scoring: 'scoring_started', toggle_dead: 'dead_toggled', confirm_scoring: 'scoring_confirmed' };
+      if (Object.hasOwn(operations, msg.type)) {
+        const result = operations[msg.type]();
+        if (!result.success) send(ws, { type: 'action_error', reason: result.reason || '当前不能执行此操作' });
+        // Also publish a timeout reached while processing a rejected action.
+        broadcast(ws.roomId, result.success ? (events[msg.type] || msg.type) : null, result.success ? result : {});
+      } else if (msg.type === 'chat') {
+        const text = String(msg.text || '').trim().slice(0, 100);
+        if (text) for (const peer of wss.clients) if (peer.roomId === ws.roomId) send(peer, { type: 'chat_message', sender: ws.playerName, role: ws.role, text, time: Date.now() });
+      } else throw new Error('未知操作');
+    } catch (err) { send(ws, { type: 'action_error', reason: err.message || '消息无效' }); }
   });
-
   ws.on('close', () => {
-    if (ws.roomId) {
-      const roomId = ws.roomId;
-      roomManager.leaveRoom(ws);
-      broadcastRoom(roomId, 'player_left');
-    }
+    const id = ws.roomId;
+    rooms.leaveRoom(ws);
+    if (id) broadcast(id, 'player_left');
   });
 });
 
-function handleClientMessage(ws, message) {
-  const { type, roomId, playerName } = message;
-
-  switch (type) {
-    case 'join_room': {
-      let targetRoom = roomManager.getRoom(roomId);
-      if (!targetRoom) {
-        // Automatically create a default room if it doesn't exist
-        targetRoom = roomManager.createRoom({
-          roomId,
-          boardSize: 19,
-          mode: 'match',
-          colorPref: 'black'
-        });
-      }
-
-      const role = roomManager.joinRoom(targetRoom.roomId, ws, playerName || '棋友');
-      ws.send(JSON.stringify({
-        type: 'join_success',
-        role,
-        roomId: targetRoom.roomId
-      }));
-
-      broadcastRoom(targetRoom.roomId, 'player_joined', { role, playerName });
-      break;
-    }
-
-    case 'move': {
-      if (!ws.roomId) return;
-      const { r, c } = message;
-      const result = roomManager.handleMove(ws, r, c);
-      if (result.success) {
-        broadcastRoom(ws.roomId, 'move_played', { move: result.move });
-      } else {
-        ws.send(JSON.stringify({
-          type: 'action_error',
-          reason: result.reason
-        }));
-      }
-      break;
-    }
-
-    case 'pass': {
-      if (!ws.roomId) return;
-      const result = roomManager.handlePass(ws);
-      if (result.success) {
-        broadcastRoom(ws.roomId, 'pass_played', { pass: result.pass, isGameOver: result.isGameOver });
-      } else {
-        ws.send(JSON.stringify({
-          type: 'action_error',
-          reason: result.reason
-        }));
-      }
-      break;
-    }
-
-    case 'resign': {
-      if (!ws.roomId) return;
-      const result = roomManager.handleResign(ws);
-      if (result.success) {
-        broadcastRoom(ws.roomId, 'game_resigned', { winner: result.winner, reason: result.reason });
-      }
-      break;
-    }
-
-    case 'teach_action': {
-      if (!ws.roomId) return;
-      const { action, payload } = message;
-      const result = roomManager.handleTeachAction(ws, action, payload);
-      if (result.success) {
-        broadcastRoom(ws.roomId, 'teach_action_done', { action, payload, ...result });
-      }
-      break;
-    }
-
-    case 'request_scoring': {
-      if (!ws.roomId) return;
-      const result = roomManager.startScoring(ws);
-      if (result.success) {
-        broadcastRoom(ws.roomId, 'scoring_started', { result: result.result });
-      }
-      break;
-    }
-
-    case 'toggle_dead': {
-      if (!ws.roomId) return;
-      const { r, c } = message;
-      const result = roomManager.toggleDeadStone(ws, r, c);
-      if (result.success) {
-        broadcastRoom(ws.roomId, 'dead_toggled', { r, c, result: result.result });
-      }
-      break;
-    }
-
-    case 'confirm_scoring': {
-      if (!ws.roomId) return;
-      const result = roomManager.confirmScoring(ws);
-      if (result.success) {
-        broadcastRoom(ws.roomId, 'scoring_confirmed', {
-          finished: result.finished,
-          agreed: result.agreed,
-          result: result.result,
-          winnerReason: result.winnerReason
-        });
-      }
-      break;
-    }
-
-    case 'chat': {
-      if (!ws.roomId) return;
-      const text = String(message.text || '').slice(0, 100);
-      if (text.trim().length === 0) return;
-
-      const clients = [...wss.clients].filter(c => c.roomId === ws.roomId && c.readyState === WebSocket.OPEN);
-      for (const client of clients) {
-        client.send(JSON.stringify({
-          type: 'chat_message',
-          sender: ws.playerName || '棋友',
-          role: ws.role,
-          text,
-          time: Date.now()
-        }));
-      }
-      break;
-    }
-  }
-}
-
-// Clock tick loop (every 1s)
 setInterval(() => {
-  for (const [roomId, room] of roomManager.rooms.entries()) {
+  rooms.cleanupRooms();
+  for (const [key, rate] of creationRates) if (Date.now() - rate.start > 60000) creationRates.delete(key);
+  for (const [id, room] of rooms.rooms) {
     if (room.clocks.active && room.status === 'playing') {
-      roomManager.updateClocks(room);
-      broadcastRoom(roomId, 'clock_tick');
+      rooms.updateClocks(room);
+      broadcast(id, 'clock_tick');
     }
   }
-}, 1000);
-
-// Heartbeat interval (every 30s)
+}, 1000).unref();
 setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) return ws.terminate();
+  for (const ws of wss.clients) {
+    if (!ws.isAlive) { ws.terminate(); continue; }
     ws.isAlive = false;
     ws.ping();
-  });
-}, 30000);
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`🌐 围棋在线服务已启动: http://localhost:${PORT}`);
-});
+  }
+}, 30000).unref();
+server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Go server listening on ${server.address().port}`));
