@@ -844,3 +844,20 @@ body {
 .modal-backdrop.active { visibility: visible; }
 .scoring-modal-card, .match-modal-card { max-height: calc(100dvh - 32px); overflow-y: auto; }
 .scoring-actions { flex-wrap: wrap; }
+
+/* Compact service-wide telemetry; move into normal flow on narrow screens. */
+.server-status { position: fixed; right: 16px; top: 100px; width: 204px; box-sizing: border-box; padding: 14px; border: 1px solid #d9e4df; border-radius: 12px; background: #fffdf8; color: #42554d; font-size: 12px; z-index: 5; box-shadow: 0 3px 14px #00000008; }
+.server-status-heading { display: flex; justify-content: space-between; gap: 8px; }
+#server-status-fresh { color: #167367; }
+.server-status[data-stale="true"] #server-status-fresh { color: #9b5e19; }
+.server-status dl { margin: 12px 0; }
+.server-status dl > div { display: flex; justify-content: space-between; gap: 8px; margin: 8px 0; }
+.server-status dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 600; }
+.server-status p { margin: 8px 0 0; font-size: 11px; line-height: 1.6; color: #68776e; }
+.server-status summary { cursor: pointer; margin-top: 8px; }
+@media (max-width: 1400px) {
+  .server-status { position: static; width: auto; max-width: 860px; margin: 12px auto; }
+  .server-status dl { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 6px 0; }
+  .server-status dl > div { gap: 10px; margin: 4px 0; }
+}
+@media (max-width: 640px) { .server-status { margin: 10px; } }

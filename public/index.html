@@ -36,6 +36,19 @@
     </div>
   </header>
 
+  <aside id="server-status" class="server-status" aria-label="服务器状态">
+    <div class="server-status-heading"><strong>服务器状态</strong><span id="server-status-fresh">连接中</span></div>
+    <dl>
+      <div><dt>CPU · 单核基准</dt><dd id="server-cpu">—</dd></div>
+      <div><dt>进程内存</dt><dd id="server-memory">—</dd></div>
+      <div><dt>有人房间 / 总数</dt><dd id="server-rooms">—</dd></div>
+      <div><dt>待清理空房间</dt><dd id="server-empty">—</dd></div>
+      <div><dt>在线连接</dt><dd id="server-connections">—</dd></div>
+    </dl>
+    <p>全站围棋服务 · 每 5 秒更新<br>连接数包含多个标签页</p>
+    <details><summary>指标说明</summary><p>CPU 为围棋进程最近 5 秒用量，100% 表示占用一个 CPU 核心，可能超过 100%。不是 Render 套餐配额使用率。内存为进程实际驻留内存。</p></details>
+  </aside>
+
   <!-- Main Board Stage (Figure 2 Style) -->
   <main class="main-stage">
 

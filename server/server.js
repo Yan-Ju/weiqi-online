@@ -1,4 +1,6 @@
 import express from 'express';
+import { performance } from 'node:perf_hooks';
+import { sampleServerStats } from './serverStats.js';
 import http from 'node:http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { fileURLToPath } from 'node:url';
@@ -8,10 +10,24 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, maxPayload: 8192 });
 const rooms = new RoomManager();
+let lastCpu = process.cpuUsage();
+let lastSample = performance.now();
+let serverStats = sampleServerStats(rooms.rooms, 0, null, process.memoryUsage().rss);
+function updateServerStats() {
+  const now = performance.now();
+  const cpu = process.cpuUsage();
+  const elapsed = now - lastSample;
+  const percent = elapsed > 0 ? ((cpu.user - lastCpu.user) + (cpu.system - lastCpu.system)) / (elapsed * 10) : null;
+  lastCpu = cpu; lastSample = now;
+  serverStats = sampleServerStats(rooms.rooms, wss.clients.size, percent, process.memoryUsage().rss);
+}
+
 app.use(express.json({ limit: '8kb' }));
 app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 app.get('/room/:roomId', (_req, res) => res.sendFile(fileURLToPath(new URL('../public/index.html', import.meta.url))));
-app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.1.0' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.2.0' }));
+
+app.get('/api/server-stats', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(serverStats); });
 
 // Bound anonymous creation as well as the lifetime of never-joined rooms.
 const creationRates = new Map();
@@ -59,6 +75,7 @@ function join(ws, id, name) {
 }
 
 wss.on('connection', ws => {
+  send(ws, { type: 'server_stats', stats: serverStats });
   ws.isAlive = true;
   ws.rate = { start: Date.now(), count: 0 };
   ws.on('pong', () => { ws.isAlive = true; });
@@ -132,4 +149,9 @@ setInterval(() => {
     ws.ping();
   }
 }, 30000).unref();
+// One shared sample/broadcast for all clients; no per-tab polling timers.
+setInterval(() => {
+  updateServerStats();
+  for (const ws of wss.clients) send(ws, { type: 'server_stats', stats: serverStats });
+}, 5000).unref();
 server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Go server listening on ${server.address().port}`));

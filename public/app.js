@@ -16,6 +16,23 @@ let creatingRoom = false;
 let reconnectAttempts = 0;
 let scoringPanelHidden = false;
 let estimatePreview = false;
+let statsReceivedAt = 0;
+function updateServerStatsUI(stats) {
+  statsReceivedAt = Date.now();
+  document.getElementById('server-status').dataset.stale = 'false';
+  document.getElementById('server-status-fresh').textContent = '实时';
+  document.getElementById('server-cpu').textContent = stats.cpuPercent == null ? '采样中' : `${stats.cpuPercent.toFixed(1)}%`;
+  document.getElementById('server-memory').textContent = `${stats.memoryMiB.toFixed(1)} MiB`;
+  document.getElementById('server-rooms').textContent = `${stats.occupiedRooms} / ${stats.rooms}`;
+  document.getElementById('server-empty').textContent = stats.emptyRooms;
+  document.getElementById('server-connections').textContent = stats.connections;
+}
+function markStatsStale() {
+  document.getElementById('server-status').dataset.stale = 'true';
+  document.getElementById('server-status-fresh').textContent = '连接中断 / 待更新';
+  for (const id of ['server-cpu', 'server-memory', 'server-rooms', 'server-empty', 'server-connections']) document.getElementById(id).textContent = '—';
+}
+
 
 function sendAction(message) {
   if (!ws || ws.readyState !== WebSocket.OPEN) { showToast('连接已断开，正在重连，请稍后重试'); return false; }
@@ -118,6 +135,7 @@ function connectWebSocket() {
   };
 
   ws.onclose = () => {
+    markStatsStale();
     console.warn('WS disconnected. Reconnecting in 2s...');
     creatingRoom = false;
     document.getElementById('btn-submit-match').disabled = false;
@@ -128,6 +146,7 @@ function connectWebSocket() {
 
 function handleServerMessage(msg) {
   switch (msg.type) {
+    case 'server_stats': updateServerStatsUI(msg.stats); break;
     case 'position_estimate': {
       estimatePreview = true;
       openScoringModal(msg.result);
@@ -685,6 +704,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('confirmation-ok').addEventListener('click', () => finishConfirmation(true));
   document.getElementById('confirmation-cancel').addEventListener('click', () => finishConfirmation(false));
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && pendingConfirmation) finishConfirmation(false); });
+  setInterval(() => { if (statsReceivedAt && Date.now() - statsReceivedAt > 12000) markStatsStale(); }, 1000);
   initBoard(19);
   setupModalEventListeners();
   setupTeachPanelEventListeners();
