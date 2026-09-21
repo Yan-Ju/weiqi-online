@@ -54,14 +54,14 @@
     <p id="estimate-progress" role="status">计算中…</p>
     <div id="estimate-details" hidden>
       <div class="estimate-columns">
-        <section><h4>⬛ 黑方</h4><dl><dt>盘上棋子</dt><dd id="est-black-stones"></dd><dt>预计归属面积</dt><dd id="est-black-area"></dd><dt>其中预计围地</dt><dd id="est-black-territory"></dd><dt>疑似死子</dt><dd id="est-black-dead"></dd></dl></section>
-        <section><h4>⬜ 白方</h4><dl><dt>盘上棋子</dt><dd id="est-white-stones"></dd><dt>预计归属面积</dt><dd id="est-white-area"></dd><dt>其中预计围地</dt><dd id="est-white-territory"></dd><dt>疑似死子</dt><dd id="est-white-dead"></dd></dl></section>
+        <section><h4>⬛ 黑方</h4><dl><dt>盘上棋子</dt><dd id="est-black-stones"></dd><dt>棋子＋势力空点</dt><dd id="est-black-area"></dd><dt>势力覆盖空点</dt><dd id="est-black-territory"></dd><dt>死活状态</dt><dd id="est-black-dead"></dd></dl></section>
+        <section><h4>⬜ 白方</h4><dl><dt>盘上棋子</dt><dd id="est-white-stones"></dd><dt>棋子＋势力空点</dt><dd id="est-white-area"></dd><dt>势力覆盖空点</dt><dd id="est-white-territory"></dd><dt>死活状态</dt><dd id="est-white-dead"></dd></dl></section>
       </div>
       <p id="estimate-result" class="estimate-result"></p>
       <p id="estimate-komi"></p><p id="estimate-uncertain"></p>
     </div>
-    <p class="estimate-note">小方块表示预计归属；棋子上的反色方块提示疑似死子。未标记空点为未定区域。落子后自动重算，对局和计时继续。</p>
-    <details><summary>算法与局限</summary><p>OGS 开源估算器 · 1000 次随机模拟。适合辅助观察，复杂死活、劫争及双活仍可能误判，不是 KataGo 神经网络分析，也不是终局裁决。</p><a href="https://github.com/online-go/score-estimator" target="_blank" rel="noopener">开源算法与许可</a></details>
+    <p class="estimate-note">小方块表示静态势力覆盖，不等于已围住的实地。未标记空点暂不划分；落子后自动更新，对局和计时继续。</p>
+    <details><summary>算法与局限</summary><p>Sabaki 静态势力算法：棋块影响随距离衰减，在边缘反射并叠加。同盘面结果稳定，默认假设盘上棋子存活；不判断死活、打入或劫争，不预测终局胜负。</p><a href="https://github.com/SabakiHQ/influence" target="_blank" rel="noopener">开源算法与许可</a></details>
     <button id="estimate-retry" class="btn-header">重新估算</button>
   </aside>
 

@@ -25,7 +25,7 @@ function updateServerStats() {
 app.use(express.json({ limit: '8kb' }));
 app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 app.get('/room/:roomId', (_req, res) => res.sendFile(fileURLToPath(new URL('../public/index.html', import.meta.url))));
-app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.3.0' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.3.1' }));
 
 app.get('/api/server-stats', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(serverStats); });
 

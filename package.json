@@ -1,6 +1,6 @@
 {
   "name": "weiqi-online",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Lightweight Online Go (Weiqi) with Match and Teaching Modes",
   "main": "server/server.js",
   "type": "module",

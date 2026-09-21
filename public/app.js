@@ -35,7 +35,7 @@ function refreshEstimate(force = false) {
   estimateKey = key; stopEstimateJob(); estimateResult = null;
   board.territoryMap = null; board.renderTerritory();
   document.getElementById('estimate-details').hidden = true;
-  document.getElementById('estimate-progress').textContent = '正在模拟分析…';
+  document.getElementById('estimate-progress').textContent = '正在分析势力…';
   estimateTimer = setTimeout(() => {
     const fail = () => { stopEstimateJob(); document.getElementById('estimate-progress').textContent = '分析未完成，请点击重新估算。'; };
     try {
@@ -50,12 +50,13 @@ function refreshEstimate(force = false) {
         board.territoryMap = estimateResult.territoryMap; board.renderTerritory();
         const r = estimateResult;
         for (const color of ['black','white']) for (const [suffix,field] of [['stones','Stones'],['area','Area'],['territory','Territory']]) document.getElementById(`est-${color}-${suffix}`).textContent = r[color+field];
-        document.getElementById('est-black-dead').textContent = r.suspectedBlackDead;
-        document.getElementById('est-white-dead').textContent = r.suspectedWhiteDead;
-        document.getElementById('estimate-result').textContent = r.uncertain > state.boardSize * state.boardSize * 0.7 ? '未定区域较多，暂不判定领先' : r.diff===0 ? '预计面积持平' : `${r.diff>0 ? '黑' : '白'}暂领先 ${Math.abs(r.diff).toFixed(1)} 点（面积估算）`;
-        document.getElementById('estimate-komi').textContent = `黑 ${r.blackArea} 点 · 白 ${r.whiteArea} + 贴目 ${r.komi} = ${r.whiteTotal} 点`;
-        document.getElementById('estimate-uncertain').textContent = `未定区域：${r.uncertain} 点；不计入双方面积。`;
-        document.getElementById('estimate-progress').textContent = '已更新 · OGS 模拟估算';
+        document.getElementById('est-black-dead').textContent = '未判断';
+        document.getElementById('est-white-dead').textContent = '未判断';
+        const coverageDiff = r.blackTerritory - r.whiteTerritory;
+        document.getElementById('estimate-result').textContent = coverageDiff === 0 ? '双方势力覆盖相同（不代表胜负）' : `${coverageDiff>0?'黑':'白'}方势力多覆盖 ${Math.abs(coverageDiff)} 个空点（不代表胜负）`;
+        document.getElementById('estimate-komi').textContent = `贴目设置：${r.komi}；势力图不扣贴目、不计算终局分数。`;
+        document.getElementById('estimate-uncertain').textContent = `未划分空点：${r.uncertain}；尚未形成明确势力或双方争夺。`;
+        document.getElementById('estimate-progress').textContent = '已更新 · Sabaki 静态势力图';
         document.getElementById('estimate-details').hidden = false;
       };
       worker.postMessage({board:state.board,currentTurn:state.currentTurn,komi:state.komi});
