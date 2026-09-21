@@ -861,3 +861,17 @@ body {
   .server-status dl > div { gap: 10px; margin: 4px 0; }
 }
 @media (max-width: 640px) { .server-status { margin: 10px; } }
+
+.estimate-panel { position: fixed; left: 16px; top: 100px; width: 260px; padding: 16px; box-sizing: border-box; background: #fffdf8; border: 1px solid #d9e4df; border-radius: 12px; color: #42554d; font-size: 13px; max-height: calc(100dvh - 120px); overflow-y: auto; z-index: 5; box-shadow: 0 3px 14px #00000008; }
+.estimate-heading { display: flex; justify-content: space-between; align-items: center; }
+.estimate-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.estimate-columns h4 { margin: 10px 0; }
+.estimate-columns dl { margin: 0; }
+.estimate-columns dt { font-size: 11px; color: #68776e; }
+.estimate-columns dd { margin: 2px 0 8px; font-weight: 600; }
+.estimate-result { padding: 10px; background: #eaf6f2; color: #167367; border-radius: 8px; font-weight: 700; }
+.estimate-panel p { line-height: 1.6; }
+.estimate-note, .estimate-panel details { font-size: 11px; color: #68776e; }
+.estimate-panel summary { cursor: pointer; }
+#estimate-retry { margin-top: 12px; }
+@media(max-width: 1500px) { .estimate-panel { position: static; width: calc(100% - 32px); max-width: 860px; margin: 12px auto; max-height: none; } .estimate-columns dl { display: grid; grid-template-columns: 1fr auto; gap: 6px; } .estimate-columns dd { margin: 0; } }

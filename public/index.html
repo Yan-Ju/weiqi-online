@@ -49,6 +49,22 @@
     <details><summary>指标说明</summary><p>CPU 为围棋进程最近 5 秒用量，100% 表示占用一个 CPU 核心，可能超过 100%。不是 Render 套餐配额使用率。内存为进程实际驻留内存。</p></details>
   </aside>
 
+  <aside id="estimate-panel" class="estimate-panel" aria-label="形势判断" hidden>
+    <div class="estimate-heading"><strong>形势判断</strong><button id="estimate-close" class="btn-header" aria-label="关闭形势判断">✕</button></div>
+    <p id="estimate-progress" role="status">计算中…</p>
+    <div id="estimate-details" hidden>
+      <div class="estimate-columns">
+        <section><h4>⬛ 黑方</h4><dl><dt>盘上棋子</dt><dd id="est-black-stones"></dd><dt>预计归属面积</dt><dd id="est-black-area"></dd><dt>其中预计围地</dt><dd id="est-black-territory"></dd><dt>疑似死子</dt><dd id="est-black-dead"></dd></dl></section>
+        <section><h4>⬜ 白方</h4><dl><dt>盘上棋子</dt><dd id="est-white-stones"></dd><dt>预计归属面积</dt><dd id="est-white-area"></dd><dt>其中预计围地</dt><dd id="est-white-territory"></dd><dt>疑似死子</dt><dd id="est-white-dead"></dd></dl></section>
+      </div>
+      <p id="estimate-result" class="estimate-result"></p>
+      <p id="estimate-komi"></p><p id="estimate-uncertain"></p>
+    </div>
+    <p class="estimate-note">小方块表示预计归属；棋子上的反色方块提示疑似死子。未标记空点为未定区域。落子后自动重算，对局和计时继续。</p>
+    <details><summary>算法与局限</summary><p>OGS 开源估算器 · 1000 次随机模拟。适合辅助观察，复杂死活、劫争及双活仍可能误判，不是 KataGo 神经网络分析，也不是终局裁决。</p><a href="https://github.com/online-go/score-estimator" target="_blank" rel="noopener">开源算法与许可</a></details>
+    <button id="estimate-retry" class="btn-header">重新估算</button>
+  </aside>
+
   <!-- Main Board Stage (Figure 2 Style) -->
   <main class="main-stage">
 

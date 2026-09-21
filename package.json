@@ -1,12 +1,12 @@
 {
   "name": "weiqi-online",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Lightweight Online Go (Weiqi) with Match and Teaching Modes",
   "main": "server/server.js",
   "type": "module",
   "scripts": {
     "start": "node server/server.js",
-    "test": "node test_rules.js && node --test test_regressions.js test_network.js test_stats.js"
+    "test": "node test_rules.js && node --test test_regressions.js test_network.js test_stats.js test_estimator.js"
   },
   "dependencies": {
     "express": "^4.21.2",

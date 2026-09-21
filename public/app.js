@@ -16,6 +16,53 @@ let creatingRoom = false;
 let reconnectAttempts = 0;
 let scoringPanelHidden = false;
 let estimatePreview = false;
+let estimateEnabled = false, estimateResult = null, estimateKey = '', estimateWorker = null, estimateTimer = null, estimateTimeout = null;
+function stopEstimateJob() {
+  clearTimeout(estimateTimer); clearTimeout(estimateTimeout);
+  estimateWorker?.terminate(); estimateWorker = null;
+}
+function closeEstimate() {
+  stopEstimateJob(); estimateEnabled = false; estimateResult = null; estimateKey = '';
+  document.getElementById('estimate-panel').hidden = true;
+  document.getElementById('btn-estimate').textContent = '形势估算';
+  if (currentRoomState) { board.territoryMap = currentRoomState.scoringState?.active ? currentRoomState.scoringState.result?.territoryMap : null; board.renderTerritory(); }
+}
+function refreshEstimate(force = false) {
+  if (!estimateEnabled || !currentRoomState) return;
+  const state = currentRoomState;
+  const key = JSON.stringify([state.roomId,state.board,state.currentTurn,state.komi]);
+  if (!force && key === estimateKey) return;
+  estimateKey = key; stopEstimateJob(); estimateResult = null;
+  board.territoryMap = null; board.renderTerritory();
+  document.getElementById('estimate-details').hidden = true;
+  document.getElementById('estimate-progress').textContent = '正在模拟分析…';
+  estimateTimer = setTimeout(() => {
+    const fail = () => { stopEstimateJob(); document.getElementById('estimate-progress').textContent = '分析未完成，请点击重新估算。'; };
+    try {
+      const worker = new Worker('/estimate-worker.js', {type:'module'});
+      estimateWorker = worker;
+      estimateTimeout = setTimeout(fail, 15000);
+      worker.onerror = fail;
+      worker.onmessage = ({data}) => {
+        if (estimateWorker !== worker || !estimateEnabled || estimateKey !== key) return;
+        if (data.error) { fail(); return; }
+        stopEstimateJob(); estimateResult = data.result;
+        board.territoryMap = estimateResult.territoryMap; board.renderTerritory();
+        const r = estimateResult;
+        for (const color of ['black','white']) for (const [suffix,field] of [['stones','Stones'],['area','Area'],['territory','Territory']]) document.getElementById(`est-${color}-${suffix}`).textContent = r[color+field];
+        document.getElementById('est-black-dead').textContent = r.suspectedBlackDead;
+        document.getElementById('est-white-dead').textContent = r.suspectedWhiteDead;
+        document.getElementById('estimate-result').textContent = r.uncertain > state.boardSize * state.boardSize * 0.7 ? '未定区域较多，暂不判定领先' : r.diff===0 ? '预计面积持平' : `${r.diff>0 ? '黑' : '白'}暂领先 ${Math.abs(r.diff).toFixed(1)} 点（面积估算）`;
+        document.getElementById('estimate-komi').textContent = `黑 ${r.blackArea} 点 · 白 ${r.whiteArea} + 贴目 ${r.komi} = ${r.whiteTotal} 点`;
+        document.getElementById('estimate-uncertain').textContent = `未定区域：${r.uncertain} 点；不计入双方面积。`;
+        document.getElementById('estimate-progress').textContent = '已更新 · OGS 模拟估算';
+        document.getElementById('estimate-details').hidden = false;
+      };
+      worker.postMessage({board:state.board,currentTurn:state.currentTurn,komi:state.komi});
+    } catch { fail(); }
+  }, 350);
+}
+
 let statsReceivedAt = 0;
 function updateServerStatsUI(stats) {
   statsReceivedAt = Date.now();
@@ -136,6 +183,7 @@ function connectWebSocket() {
 
   ws.onclose = () => {
     markStatsStale();
+    closeEstimate();
     console.warn('WS disconnected. Reconnecting in 2s...');
     creatingRoom = false;
     document.getElementById('btn-submit-match').disabled = false;
@@ -147,16 +195,13 @@ function connectWebSocket() {
 function handleServerMessage(msg) {
   switch (msg.type) {
     case 'server_stats': updateServerStatsUI(msg.stats); break;
-    case 'position_estimate': {
-      estimatePreview = true;
-      openScoringModal(msg.result);
-      break;
-    }
+    case 'position_estimate': break; // Legacy server response; browser worker now owns estimates.
     case 'new_game': {
       showToast(msg.restarted ? '新一局已开始' : '已申请新一局，等待另一方点击同意');
       break;
     }
     case 'join_success': {
+      closeEstimate();
       myRole = msg.role;
       currentRoomId = msg.roomId;
       setRoomURL(currentRoomId);
@@ -244,6 +289,7 @@ function applyRoomState(state) {
   if (!state) return;
   const wasScoring = currentRoomState?.status === 'scoring';
   if (!wasScoring && state.status === 'scoring') { scoringPanelHidden = false; estimatePreview = false; }
+  if (state.status === 'scoring') closeEstimate();
   currentRoomState = state;
   currentRoomId = state.roomId;
   myRole = state.myRole;
@@ -290,11 +336,13 @@ function applyRoomState(state) {
   board.updateState(state.board, {
     lastMove: state.lastMove,
     deadStones: state.scoringState && state.scoringState.active ? state.scoringState.result?.deadStones : {},
-    territoryMap: state.scoringState && state.scoringState.active ? state.scoringState.result?.territoryMap : null,
+    territoryMap: state.scoringState && state.scoringState.active ? state.scoringState.result?.territoryMap : (estimateEnabled ? estimateResult?.territoryMap : null),
     annotations: state.teachState?.annotations || {},
     moveNumbersMap: state.moveNumbersMap || {},
     hoverColor: board.hoverColor
   });
+
+  refreshEstimate();
 
   // Turn badge & text
   const turnBadge = document.getElementById('turn-badge');
@@ -688,7 +736,16 @@ function updateScoringUI(res) {
 }
 
 function setupScoringEventListeners() {
-  document.getElementById('btn-estimate').addEventListener('click', () => sendAction({ type: 'request_estimate' }));
+  document.getElementById('btn-estimate').addEventListener('click', () => {
+    if (estimateEnabled) { closeEstimate(); return; }
+    if (!currentRoomState || ws?.readyState !== WebSocket.OPEN) return;
+    estimateEnabled = true;
+    document.getElementById('estimate-panel').hidden = false;
+    document.getElementById('btn-estimate').textContent = '关闭形势估算';
+    refreshEstimate(true);
+  });
+  document.getElementById('estimate-close').addEventListener('click', closeEstimate);
+  document.getElementById('estimate-retry').addEventListener('click', () => refreshEstimate(true));
   document.getElementById('btn-scoring-close').addEventListener('click', () => { scoringPanelHidden = true; closeScoringModal(); });
   document.getElementById('btn-show-scoring').addEventListener('click', () => { estimatePreview = false; scoringPanelHidden = false; openScoringModal(currentRoomState?.scoringState?.result); });
   for (const id of ['btn-resume-game', 'btn-scoring-resume']) document.getElementById(id).addEventListener('click', () => sendAction({ type: 'resume_game' }));

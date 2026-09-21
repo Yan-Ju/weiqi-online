@@ -174,10 +174,11 @@ export class GoBoardSVG {
 
     // Dynamic Layers
     this.territoryLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    svg.appendChild(this.territoryLayer);
+    this.territoryLayer.setAttribute("pointer-events", "none");
 
     this.stonesLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     svg.appendChild(this.stonesLayer);
+    svg.appendChild(this.territoryLayer);
 
     this.markersLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     svg.appendChild(this.markersLayer);
