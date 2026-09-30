@@ -877,17 +877,17 @@ button:disabled { opacity:.46; cursor:not-allowed; }
 .btn-modal-action { background:linear-gradient(110deg,#3c6250,#274837);border:1px solid #2e4b39;color:#fff9e9;border-radius:10px;padding:15px;font-weight:600;letter-spacing:1px;box-shadow:0 5px 14px #33533f22; }.btn-modal-action:hover { background:#294635; }
 .scoring-modal-card { background:#faf7ee;border-color:#dad1be; }.scoring-title { color:#43533e; }
 .config-proposal { padding:14px;background:#eee7d1;border:1px solid #d7c796;border-radius:10px;font-size:12px;line-height:1.7; }.config-proposal>div { display:flex;gap:8px;margin-top:9px; }
-.chess-frame { position:relative;width:100%;height:100%;padding:0;background:#739552; }
+.chess-frame { position:relative;width:100%;height:100%;padding:0;background:#739552;overflow:hidden; }
 .chess-board { display:grid;width:100%;height:100%;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr); }
 .chess-cell { border:0;border-radius:0;position:relative;padding:0;min-width:0;min-height:0;cursor:pointer;isolation:isolate; }
 .chess-cell.light { background:#ebecd0;color:#739552; }
 .chess-cell.dark { background:#739552;color:#ebecd0; }
 .chess-cell::before { content:'';position:absolute;inset:0;pointer-events:none;z-index:-1; }.chess-cell.last-move::before { background:#eed76b38; }.chess-cell.selected::before { background:#f8db7355;box-shadow:inset 0 0 0 3px #d2af54; }
 .chess-cell:hover { box-shadow:inset 0 0 0 3px #f0dc9966; }.chess-cell:focus-visible { outline-offset:-4px;z-index:1; }
-.chess-piece { width:100%;height:100%;display:block;pointer-events:none;filter:none; }
+.chess-piece { width:108%;height:108%;display:block;pointer-events:none;filter:drop-shadow(1px 2px 2px rgba(0,0,0,0.25));margin:-4% auto 0; }
 .chess-cell.legal-target::after { content:'';width:22%;height:22%;position:absolute;top:39%;left:39%;border-radius:50%;background:#344c3899;box-shadow:0 0 0 2px #ffffff25;pointer-events:none; }
 .chess-cell.legal-target.occupied::after { inset:4%;width:92%;height:92%;background:none;border:4px solid #314d3799; }
-.square-label,.file-label { position:absolute;font-family:Arial,sans-serif;font-size:clamp(10px,1.8vw,17px);font-weight:600;line-height:1;pointer-events:none; }.square-label { top:3px;left:4px; }.file-label { right:4px;bottom:2px; }
+.square-label,.file-label { position:absolute;font-family:'Arial Black',Arial,sans-serif;font-size:clamp(9px,1.5vw,14px);font-weight:700;line-height:1;pointer-events:none;opacity:0.85; }.square-label { top:4px;left:5px; }.file-label { right:5px;bottom:3px; }
 .chess-palette { display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:5px;margin:10px 0; }.chess-palette-btn { height:53px;border:1px solid #dbd1b8;border-radius:7px;background:#e6dec8;color:#675b42;cursor:pointer;padding:1px; }.chess-palette-btn.active { background:#b8c7a4;border-color:#69815a;box-shadow:0 0 0 1px #69815a; }
 .chess-edit-actions { display:flex;align-items:center;flex-wrap:wrap;gap:12px;font-size:12px;color:#767765; }.chess-edit-actions>span { color:#9c9480;font-size:11px; }
 .promotion-options { display:flex;gap:8px;margin-top:20px; }.promotion-options button { background:#e8e4d5;border:1px solid #bbae8c;border-radius:8px;padding:15px;cursor:pointer; }
@@ -914,8 +914,8 @@ button:disabled { opacity:.46; cursor:not-allowed; }
 @media(max-width:760px) { .markup-tool-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } }
 
 /* Frameless chess reference; keep the wooden surround for Go only. */
-.board-wrapper.is-chess { padding:0; border:1px solid #343a2e; border-radius:2px; background:none; box-shadow:none; }
-.is-chess .board-container { border-radius:1px; }
+.board-wrapper.is-chess { padding:0; border:none; border-radius:3px; background:none; box-shadow:0 4px 16px rgba(0,0,0,0.18); overflow:hidden; }
+.is-chess .board-container { border-radius:0; }
 .chess-annotations { position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3; }
 .chess-palette-btn[data-piece="0"] { grid-column:1/-1;height:32px; }
 /* Native select centers text itself; vertical padding was pushing its baseline down. */
