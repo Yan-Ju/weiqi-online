@@ -1,6 +1,6 @@
 {
   "name": "weiqi-online",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Online Go and Chess with multiplayer matches and collaborative board setup",
   "main": "server/server.js",
   "type": "module",

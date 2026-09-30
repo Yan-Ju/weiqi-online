@@ -25,7 +25,7 @@ function updateServerStats() {
 app.use(express.json({ limit: '8kb' }));
 app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 app.get('/room/:roomId', (_req, res) => res.sendFile(fileURLToPath(new URL('../public/index.html', import.meta.url))));
-app.get('/health', (_req, res) => res.json({ status: 'ok', version: '2.0.0' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', version: '2.1.0' }));
 
 app.get('/api/server-stats', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(serverStats); });
 
@@ -159,3 +159,4 @@ setInterval(() => {
   for (const ws of wss.clients) send(ws, { type: 'server_stats', stats: serverStats });
 }, 5000).unref();
 server.listen(process.env.PORT || 3000, '0.0.0.0', () => console.log(`Go server listening on ${server.address().port}`));
+
