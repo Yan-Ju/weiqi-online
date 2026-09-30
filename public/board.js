@@ -1,3 +1,4 @@
+import { renderAnnotations } from './annotations.js';
 /**
  * GoBoardSVG - High quality SVG Go Board renderer
  * Supports 9x9, 13x13, 19x19 boards, realistic 3D stones, hover previews,
@@ -16,6 +17,7 @@ export class GoBoardSVG {
     this.hoverPos = null; // { r, c }
     this.hoverColor = 1;
     this.showMoveNumbers = false;
+    this.markupMode = false;
     this.moveNumbersMap = {}; // 'r,c' => number
     this.deadStones = {}; // 'r,c' => boolean
     this.territoryMap = null; // 'r,c' => 1 (black), 2 (white), 0 (dame)
@@ -63,7 +65,7 @@ export class GoBoardSVG {
         <path d="M0 12Q200 18 400 12T800 12M0 72Q200 88 430 72T800 72" fill="none" stroke="#fff7cb" stroke-width="2" opacity=".17"/>
       </pattern>
       <!-- Board Wood Grain Gradient -->
-      <radialGradient id="boardBgGrad" cx="45%" cy="40%" r="70%">
+      <radialGradient id="boardBgGrad" cx="360" cy="320" r="560" gradientUnits="userSpaceOnUse">
         <stop offset="0%" stop-color="#efd1a1" />
         <stop offset="70%" stop-color="#d6b079" />
         <stop offset="100%" stop-color="#bf935d" />
@@ -107,9 +109,7 @@ export class GoBoardSVG {
         <stop offset="100%" stop-color="#d8d1c3" stop-opacity="0.75" />
       </radialGradient>
 
-      <marker id="annotationArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
-        <path d="M0,0 L8,4 L0,8 z" fill="context-stroke" />
-      </marker>
+
     `;
     svg.appendChild(defs);
 
@@ -191,10 +191,14 @@ export class GoBoardSVG {
     svg.appendChild(this.stonesLayer);
     svg.appendChild(this.territoryLayer);
 
+    this.annotationsLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.annotationsLayer.setAttribute('pointer-events','none');
     this.markersLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     svg.appendChild(this.markersLayer);
+    svg.appendChild(this.annotationsLayer);
 
     this.ghostLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    this.ghostLayer.setAttribute('data-layer','ghost');
     svg.appendChild(this.ghostLayer);
 
     // Interactive Hitbox Layer
@@ -207,6 +211,7 @@ export class GoBoardSVG {
         rect.setAttribute('width', this.cellSize);
         rect.setAttribute('height', this.cellSize);
         rect.setAttribute('fill', 'transparent');
+        rect.dataset.r=r; rect.dataset.c=c;
         rect.setAttribute('cursor', 'pointer');
 
         rect.addEventListener('click', (e) => {
@@ -370,7 +375,7 @@ export class GoBoardSVG {
           cross.setAttribute('dominant-baseline', 'central');
           cross.textContent = '✕';
           group.appendChild(cross);
-        } else if (this.showMoveNumbers && this.moveNumbersMap[`${r},${c}`]) {
+        } else if (!this.annotations[`${r},${c}`] && this.showMoveNumbers && this.moveNumbersMap[`${r},${c}`]) {
           const num = this.moveNumbersMap[`${r},${c}`];
           const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
           text.setAttribute('x', cx);
@@ -425,7 +430,7 @@ export class GoBoardSVG {
     if (this.lastMove && this.lastMove.r !== undefined && this.lastMove.c !== undefined) {
       const r = this.lastMove.r;
       const c = this.lastMove.c;
-      if (this.board[r] && this.board[r][c] !== 0) {
+      if (this.board[r] && this.board[r][c] !== 0 && !this.annotations[`${r},${c}`]) {
         const cx = this.padding + c * this.cellSize;
         const cy = this.padding + r * this.cellSize;
         const color = this.board[r][c];
@@ -441,50 +446,20 @@ export class GoBoardSVG {
       }
     }
 
-    // Teaching annotations: point marks plus lines and arrows.
-    for (const [key, item] of Object.entries(this.annotations)) {
-      const color = item.color || '#1e293b';
-      if ((item.type === 'line' || item.type === 'arrow') && item.from && item.to) {
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', this.padding + item.from.c * this.cellSize);
-        line.setAttribute('y1', this.padding + item.from.r * this.cellSize);
-        line.setAttribute('x2', this.padding + item.to.c * this.cellSize);
-        line.setAttribute('y2', this.padding + item.to.r * this.cellSize);
-        line.setAttribute('stroke', color);
-        line.setAttribute('stroke-width', Math.max(3, this.cellSize * 0.07));
-        line.setAttribute('stroke-linecap', 'round');
-        line.setAttribute('opacity', '0.9');
-        if (item.type === 'arrow') {
-          line.setAttribute('marker-end', 'url(#annotationArrow)');
-          line.style.setProperty('--annotation-arrow-color', color);
-        }
-        this.markersLayer.appendChild(line);
-        continue;
-      }
-      const [r, c] = key.split(',').map(Number);
-      if (!Number.isInteger(r) || !Number.isInteger(c) || !this.board[r]) continue;
-      const cx = this.padding + c * this.cellSize;
-      const cy = this.padding + r * this.cellSize;
-      const markText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      markText.setAttribute('x', cx);
-      markText.setAttribute('y', cy);
-      markText.setAttribute('fill', color);
-      markText.setAttribute('font-size', this.stoneRadius * (['number', 'letter'].includes(item.type) ? 0.9 : 1.1));
-      markText.setAttribute('font-weight', 'bold');
-      markText.setAttribute('text-anchor', 'middle');
-      markText.setAttribute('dominant-baseline', 'central');
-      if (item.type === 'triangle') markText.textContent = '▲';
-      else if (item.type === 'square') markText.textContent = '■';
-      else if (item.type === 'cross') markText.textContent = '✕';
-      else if (item.type === 'circle') markText.textContent = '●';
-      else markText.textContent = item.text || '●';
-      this.markersLayer.appendChild(markText);
-    }
+    renderAnnotations(this.annotationsLayer, this.annotations, this.board, {
+      coord: (r,c) => ({x:this.padding+c*this.cellSize,y:this.padding+r*this.cellSize}),
+      radius:this.stoneRadius, boardColor:'url(#boardBgGrad)'
+    });
+  }
+
+  setMarkupMode(active) {
+    this.markupMode=active;
+    this.renderGhost();
   }
 
   renderGhost() {
     this.ghostLayer.innerHTML = '';
-    if (!this.interactive || !this.hoverPos) return;
+    if (!this.interactive || !this.hoverPos || this.markupMode) return;
 
     const { r, c } = this.hoverPos;
     if (this.board[r][c] !== 0) return;

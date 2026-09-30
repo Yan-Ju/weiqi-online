@@ -486,10 +486,9 @@ export class RoomManager {
       room.teachState.annotations = {};
       return { success: true, annotations: room.teachState.annotations };
     } else if (['toggle_annotation', 'markup', 'add_annotation'].includes(action)) {
-      const { r, c, type, text, color = '#1e293b', toR, toC } = payload;
+      const { r, c, type, text, toR, toC } = payload;
       const pointTypes = ['circle', 'triangle', 'square', 'cross', 'text', 'number', 'letter'];
       const lineTypes = ['line', 'arrow'];
-      const validColor = ['#1e293b', '#dc2626', '#2563eb', '#16a34a'].includes(color) ? color : '#1e293b';
       if (!pointTypes.includes(type) && !lineTypes.includes(type) && type !== 'eraser' && type !== 'clear') return { success: false, reason: '标记类型无效' };
       const annotations = room.teachState.annotations;
       if (type === 'clear') {
@@ -510,21 +509,22 @@ export class RoomManager {
       if (lineTypes.includes(type)) {
         if (!room.game.isValidCoord(toR, toC) || (toR === r && toC === c)) return { success: false, reason: '线段终点无效' };
         const lineKey = `${type}:${r},${c}-${toR},${toC}`;
-        annotations[lineKey] = { type, color: validColor, from: { r, c }, to: { r: toR, c: toC } };
+        annotations[lineKey] = { type, from: { r, c }, to: { r: toR, c: toC } };
         return { success: true, annotations };
       }
-      let nextText = text;
+      let nextText = typeof text === 'string' ? text.slice(0,8) : '';
       if (type === 'number') {
         const used = new Set(Object.values(annotations).filter(item => item.type === 'number').map(item => Number(item.text)).filter(Number.isFinite));
         let n = 1; while (used.has(n)) n++;
         nextText = String(n);
       } else if (type === 'letter') {
         const used = new Set(Object.values(annotations).filter(item => item.type === 'letter').map(item => String(item.text)));
-        let n = 0; while (used.has(String.fromCharCode(65 + n))) n++;
-        nextText = String.fromCharCode(65 + (n % 26));
+        const label = n => { let value=''; do { value=String.fromCharCode(65+(n%26))+value; n=Math.floor(n/26)-1; } while(n>=0); return value; };
+        let n = 0; while(used.has(label(n))) n++;
+        nextText=label(n);
       }
       if (annotations[key] && annotations[key].type === type && !['number', 'letter'].includes(type)) delete annotations[key];
-      else annotations[key] = { type, text: nextText, color: validColor };
+      else annotations[key] = { type, text: nextText };
       return { success: true, annotations };
     }
 

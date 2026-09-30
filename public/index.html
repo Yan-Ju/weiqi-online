@@ -133,8 +133,7 @@
     <section id="teach-mode-panel" class="teach-mode-panel" style="display: none;">
       <div id="go-markup-tools" class="go-markup-tools" hidden>
         <div class="markup-tools-heading"><span class="teach-label">练习标记</span><span id="markup-tool-hint">选择工具后点击棋盘</span></div>
-        <div class="markup-tool-grid" role="toolbar" aria-label="围棋练习标记工具">
-          <button type="button" class="markup-tool active" data-tool="move" title="落子">●</button>
+        <div class="markup-tool-grid" role="toolbar" aria-label="练习标记工具">
           <button type="button" class="markup-tool" data-tool="triangle" title="三角形">△</button>
           <button type="button" class="markup-tool" data-tool="square" title="方形">□</button>
           <button type="button" class="markup-tool" data-tool="circle" title="圆形">○</button>
@@ -146,12 +145,10 @@
           <button type="button" class="markup-tool" data-tool="eraser" title="擦除标记">⌫</button>
           <button type="button" class="markup-tool" data-tool="clear" title="清空全部标记">清空</button>
         </div>
-        <div class="markup-color-row" aria-label="标记颜色"><span>颜色</span><button type="button" class="markup-color active" data-color="#1e293b" title="深色"></button><button type="button" class="markup-color" data-color="#dc2626" title="红色"></button><button type="button" class="markup-color" data-color="#2563eb" title="蓝色"></button><button type="button" class="markup-color" data-color="#16a34a" title="绿色"></button></div>
       </div>
       <div id="chess-setup-tools" class="chess-setup-tools" hidden>
-        <span class="teach-label">摆棋棋子</span>
+        <span class="teach-label">摆棋棋子 · 再点已选棋子恢复移动</span>
         <div class="chess-palette">
-          <button type="button" class="chess-palette-btn active" data-piece="move">移动</button>
           <button type="button" class="chess-palette-btn" data-piece="P">♙</button>
           <button type="button" class="chess-palette-btn" data-piece="K">♔</button>
           <button type="button" class="chess-palette-btn" data-piece="Q">♕</button>
@@ -164,7 +161,7 @@
           <button type="button" class="chess-palette-btn" data-piece="r">♜</button>
           <button type="button" class="chess-palette-btn" data-piece="b">♝</button>
           <button type="button" class="chess-palette-btn" data-piece="n">♞</button>
-          <button type="button" class="chess-palette-btn" data-piece="0">⌫</button>
+          <button type="button" class="chess-palette-btn" data-piece="0" aria-label="擦除棋子" title="擦除棋子">⌫</button>
         </div>
         <div class="chess-edit-actions"><button id="chess-clear" class="btn-teach">清空棋盘</button><label>行棋方 <select id="chess-turn"><option value="2">白方</option><option value="1">黑方</option></select></label><span>自由摆放，不检查合法性</span></div>
       </div>

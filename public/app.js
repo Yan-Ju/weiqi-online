@@ -26,7 +26,7 @@ let estimatePreview = false;
 let estimateEnabled = false, estimateResult = null, estimateKey = '', estimateWorker = null, estimateTimer = null, estimateTimeout = null;
 let selectedTeachTool = 'move';
 let markupStart = null;
-let annotationColor = '#1e293b';
+
 function stopEstimateJob() {
   clearTimeout(estimateTimer); clearTimeout(estimateTimeout);
   estimateWorker?.terminate(); estimateWorker = null;
@@ -150,6 +150,7 @@ function setRoomURL(roomId) {
 // Initialize Board SVG
 function initBoard(size = 19, gameType = selectedGameType) {
   renderedGameType = gameType;
+  document.querySelector('.board-wrapper').classList.toggle('is-chess', gameType === 'chess');
   chessSelection = null;
   const BoardClass = gameType === 'chess' ? ChessBoard : GoBoardSVG;
   board = new BoardClass('board-container', {
@@ -309,6 +310,9 @@ function applyRoomState(state) {
   if (state.status === 'scoring') closeEstimate();
   const boardChanged = JSON.stringify([currentRoomState?.revision,currentRoomState?.board,currentRoomState?.gameType,currentRoomState?.mode,currentRoomState?.status]) !== JSON.stringify([state.revision,state.board,state.gameType,state.mode,state.status]);
   if (boardChanged) { chessSelection = null; pendingPromotion = null; document.getElementById('promotion-modal').classList.remove('active'); }
+  const contextChanged = ['roomId','gameType','mode','revision','boardSize'].some(key => currentRoomState?.[key] !== state[key]);
+  if (contextChanged) { selectedTeachTool='move'; chessSetupPiece='move'; markupStart=null; }
+  if (boardChanged) markupStart=null;
   currentRoomState = state;
   currentRoomId = state.roomId;
   myRole = state.myRole;
@@ -351,12 +355,12 @@ function applyRoomState(state) {
   }
 
   document.getElementById('chess-setup-tools').hidden = renderedGameType !== 'chess' || state.mode !== 'teach';
-  document.getElementById('go-markup-tools').hidden = renderedGameType !== 'go' || state.mode !== 'teach';
+  document.getElementById('go-markup-tools').hidden = state.mode !== 'teach';
   document.querySelector('.teach-row-mode').hidden = renderedGameType === 'chess';
 
   // Board visual state update
   if (renderedGameType === 'chess') {
-    board.updateState(state.board, { lastMove: state.lastMove, legalMoves: state.chess?.legalMoves || [], clearSelection: boardChanged, interactive: (myRole === 'black' || myRole === 'white') && state.status === 'playing' });
+    board.updateState(state.board, { lastMove: state.lastMove, annotations: state.teachState?.annotations || {}, legalMoves: state.chess?.legalMoves || [], clearSelection: boardChanged, interactive: (myRole === 'black' || myRole === 'white') && state.status === 'playing' });
   } else {
   board.hoverColor = state.teachState && state.mode === 'teach'
     ? (state.teachState.placementMode === 'white_only' ? 2 : (state.teachState.placementMode === 'black_only' ? 1 : state.currentTurn))
@@ -368,10 +372,12 @@ function applyRoomState(state) {
     territoryMap: state.scoringState && state.scoringState.active ? state.scoringState.result?.territoryMap : (estimateEnabled ? estimateResult?.territoryMap : null),
     annotations: state.teachState?.annotations || {},
     moveNumbersMap: state.moveNumbersMap || {},
-    hoverColor: board.hoverColor
+    hoverColor: board.hoverColor,
+    interactive: ['black','white'].includes(myRole) && ['playing','scoring'].includes(state.status)
   });
   }
 
+  refreshTeachTools();
   refreshEstimate();
 
   // Turn badge & text
@@ -485,7 +491,7 @@ function applyRoomState(state) {
   document.getElementById('btn-open-settings').disabled = !isPlayer;
   document.getElementById('player-black').textContent = `黑方 · ${state.players.black?.name || '等待入座'}`;
   document.getElementById('player-white').textContent = `白方 · ${state.players.white?.name || '等待入座'}`;
-  document.getElementById('board-material').textContent = chess ? '橄榄绿与米白 / 扁平灰阶棋子' : '榧木色棋盘 / 黑玉与白贝';
+  document.getElementById('board-material').textContent = chess ? '经典绿白棋盘 / 参考图棋子'  : '榧木色棋盘 / 黑玉与白贝';
   document.getElementById('btn-flip').hidden = !chess;
   document.querySelector('.board-size-switches').hidden = chess;
   for (const id of ['btn-estimate','btn-match-pass','btn-match-score','btn-teach-pass','btn-teach-scoring','btn-toggle-numbers']) document.getElementById(id).hidden = chess;
@@ -501,7 +507,7 @@ function applyRoomState(state) {
     document.getElementById('board-captures-count').textContent = `吃子：白 ${wCaptures} · 黑 ${bCaptures}`;
     turnText.textContent = state.mode === 'teach' ? '自由摆棋' : `${state.currentTurn === 2 ? '白' : '黑'}方行棋${state.chess?.check ? ' · 将军' : ''}`;
     if (state.status === 'finished') turnText.textContent = '对局结束';
-    if (state.mode === 'teach') statusEl.textContent = '选择棋子放置，或选择“移动”调整位置；双方可共同编辑。';
+    if (state.mode === 'teach') statusEl.textContent = '选择棋子放置；再点已选棋子即可恢复移动。双方可共同编辑。';
   }
   const proposal = state.pendingConfig;
   document.getElementById('config-proposal').hidden = !proposal;
@@ -518,6 +524,18 @@ function applyRoomState(state) {
 async function handleIntersectionClick(r, c) {
   const state = currentRoomState;
   if (!ws || ws.readyState !== WebSocket.OPEN || !state || !['black','white'].includes(myRole)) return;
+  if (state.status === 'scoring') { sendAction({type:'toggle_dead',r,c}); return; }
+  if (state.status !== 'playing') return;
+  if (state.mode === 'teach' && selectedTeachTool !== 'move') {
+    if (['line','arrow'].includes(selectedTeachTool)) {
+      if (!markupStart) { markupStart={r,c}; refreshTeachTools(); }
+      else {
+        if (markupStart.r !== r || markupStart.c !== c) sendAction({type:'teach_action',action:'markup',payload:{type:selectedTeachTool,r:markupStart.r,c:markupStart.c,toR:r,toC:c}});
+        markupStart=null; refreshTeachTools();
+      }
+    } else sendAction({type:'teach_action',action:'markup',payload:{type:selectedTeachTool,r,c}});
+    return;
+  }
   if (renderedGameType === 'chess') {
     if (state.status !== 'playing') return;
     if (state.mode === 'teach' && chessSetupPiece !== 'move') {
@@ -539,27 +557,6 @@ async function handleIntersectionClick(r, c) {
       if (legal.some(m => m.promotion)) { pendingPromotion = action; document.getElementById('promotion-modal').classList.add('active'); return; }
     }
     sendAction(action); return;
-  }
-  if (state.mode === 'teach') {
-    if (selectedTeachTool === 'clear') {
-      sendAction({ type: 'teach_action', action: 'markup', payload: { type: 'clear' } });
-      markupStart = null;
-      return;
-    }
-    if (selectedTeachTool === 'line' || selectedTeachTool === 'arrow') {
-      if (!markupStart) {
-        markupStart = { r, c };
-        showToast('请选择终点');
-      } else {
-        sendAction({ type: 'teach_action', action: 'markup', payload: { type: selectedTeachTool, r: markupStart.r, c: markupStart.c, toR: r, toC: c, color: annotationColor } });
-        markupStart = null;
-      }
-      return;
-    }
-    if (selectedTeachTool !== 'move') {
-      sendAction({ type: 'teach_action', action: 'markup', payload: { type: selectedTeachTool, r, c, color: annotationColor } });
-      return;
-    }
   }
   sendAction({ type: state.status === 'scoring' ? 'toggle_dead' : 'move', r, c });
 }
@@ -672,18 +669,40 @@ function setupModalEventListeners() {
 // Teaching Mode Controls (Figure 2 Blue Dashed Box)
 // ==========================================================================
 
+function canUseTeachTools() {
+  return currentRoomState?.mode === 'teach' && currentRoomState.status === 'playing' && ['black','white'].includes(myRole);
+}
+function refreshTeachTools() {
+  const enabled=canUseTeachTools();
+  document.querySelectorAll('.markup-tool').forEach(btn => {
+    const active=btn.dataset.tool === selectedTeachTool;
+    btn.classList.toggle('active',active); btn.disabled=!enabled;
+    if(btn.dataset.tool !== 'clear') btn.setAttribute('aria-pressed',String(active));
+  });
+  document.querySelectorAll('.chess-palette-btn').forEach(btn => {
+    const active=String(chessSetupPiece) === btn.dataset.piece;
+    btn.classList.toggle('active',active); btn.setAttribute('aria-pressed',String(active)); btn.disabled=!enabled;
+  });
+  board?.setMarkupMode?.(enabled && selectedTeachTool !== 'move');
+  const hints={triangle:'点击棋子或空点标记三角形',square:'点击棋子或空点标记方形',circle:'点击棋子或空点标记圆形',cross:'点击棋子或空点标记叉号',number:'点击自动编号',letter:'点击添加字母',line:'依次点击起点和终点',arrow:'依次点击起点和终点',eraser:'点击擦除标记；线段点任一端点'};
+  document.getElementById('markup-tool-hint').textContent=markupStart ? '请选择终点；再点起点取消' : selectedTeachTool === 'move' ? '选择工具开始标记，再点一次恢复下棋' : (hints[selectedTeachTool]+' · 再点工具退出');
+}
+
 function setupTeachPanelEventListeners() {
-  document.querySelectorAll('.markup-tool').forEach(btn => btn.addEventListener('click', () => {
-    selectedTeachTool = btn.dataset.tool;
-    markupStart = null;
-    document.querySelectorAll('.markup-tool').forEach(item => item.classList.toggle('active', item === btn));
-    const hints = { move: '点击棋盘落子', triangle: '点击棋子或空点添加三角', square: '点击棋子或空点添加方形', circle: '点击棋子或空点添加圆形', cross: '点击棋子或空点添加叉号', number: '点击棋盘自动编号', letter: '点击棋盘添加字母', line: '依次点击起点和终点', arrow: '依次点击起点和终点', eraser: '点击标记擦除', clear: '点击棋盘清空全部标记' };
-    document.getElementById('markup-tool-hint').textContent = hints[selectedTeachTool] || '';
-  }));
-  document.querySelectorAll('.markup-color').forEach(btn => btn.addEventListener('click', () => {
-    annotationColor = btn.dataset.color;
-    document.querySelectorAll('.markup-color').forEach(item => item.classList.toggle('active', item === btn));
-  }));
+  document.querySelectorAll('.markup-tool').forEach(btn => {
+    btn.setAttribute('aria-label',btn.title);
+    btn.addEventListener('click', () => {
+      if (!canUseTeachTools()) return;
+      markupStart=null;
+      if (btn.dataset.tool === 'clear') {
+        sendAction({type:'teach_action',action:'clear_annotations'});
+      } else {
+        selectedTeachTool=selectedTeachTool === btn.dataset.tool ? 'move' : btn.dataset.tool;
+        chessSetupPiece='move'; chessSelection=null; board.clearSelection?.();
+      }
+      refreshTeachTools();
+    });
+  });
   document.getElementById('chess-clear').addEventListener('click', async () => { if (await confirmAction('清空棋盘上的所有棋子？可以通过撤销恢复。')) sendAction({type:'teach_action',action:'clear_board'}); });
   document.getElementById('chess-turn').addEventListener('change', e => sendAction({type:'teach_action',action:'set_turn',payload:{color:Number(e.target.value)}}));
   document.querySelectorAll('.chess-palette-btn').forEach(btn => {
@@ -691,9 +710,12 @@ function setupTeachPanelEventListeners() {
     if (!['move','0'].includes(piece)) { btn.innerHTML=pieceSVG(piece,'palette-'+piece); btn.setAttribute('aria-label', (piece === piece.toUpperCase() ? '白' : '黑')+({p:'兵',n:'马',b:'象',r:'车',q:'后',k:'王'}[piece.toLowerCase()])); }
   });
   document.querySelectorAll('.chess-palette-btn').forEach(btn => btn.addEventListener('click', () => {
-    chessSetupPiece = btn.dataset.piece === '0' ? 0 : btn.dataset.piece;
+    if (!canUseTeachTools()) return;
+    const piece=btn.dataset.piece === '0' ? 0 : btn.dataset.piece;
+    chessSetupPiece=chessSetupPiece === piece ? 'move' : piece;
+    selectedTeachTool='move'; markupStart=null;
     chessSelection = null; board.clearSelection?.();
-    document.querySelectorAll('.chess-palette-btn').forEach(b => b.classList.toggle('active', b === btn));
+    refreshTeachTools();
   }));
   // Placement Mode Radios (只下黑子, 只下白子, 正常交替)
   document.querySelectorAll('input[name="teach-color"]').forEach(input => {

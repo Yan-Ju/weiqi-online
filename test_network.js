@@ -59,6 +59,10 @@ test('real server: multiple clients, scoring, resize, rematch, room cleanup and 
   assert.ok(estimate.result.dameCount > 0);
   assert.ok(estimate.result.blackTerritory < 40);
   assert.equal((await (await fetch(`${url}/api/room/${roomId}`)).json()).status, 'playing');
+  a.send({type:'teach_action',action:'markup',payload:{type:'triangle',r:4,c:4}});
+  assert.equal((await b.wait(m=>m.event==='teach_action' && m.state.teachState.annotations['4,4'])).state.teachState.annotations['4,4'].type,'triangle');
+  b.send({type:'teach_action',action:'clear_annotations'});
+  assert.deepEqual((await a.wait(m=>m.event==='teach_action' && !Object.keys(m.state.teachState.annotations).length)).state.teachState.annotations,{});
   a.send({ type: 'request_scoring' });
   assert.equal((await b.wait(m => m.event === 'scoring_started')).state.status, 'scoring');
   b.send({ type: 'toggle_dead', r: 4, c: 4 });
@@ -100,7 +104,11 @@ test('real server: multiple clients, scoring, resize, rematch, room cleanup and 
   a.send({type:'respond_config',id:teaching.state.pendingConfig.id,accept:true});
   await b.wait(m => m.event === 'respond_config' && m.state.mode === 'teach');
   b.send({type:'teach_action',action:'set_chess_piece',payload:{r:3,c:3,piece:'Q'}});
-  assert.equal((await a.wait(m => m.event === 'teach_action')).state.board[3][3],'Q');
+  assert.equal((await a.wait(m => m.event === 'teach_action' && m.state.gameType === 'chess' && m.state.board[3][3] === 'Q')).state.board[3][3],'Q');
+  a.send({type:'teach_action',action:'markup',payload:{type:'arrow',r:3,c:3,toR:7,toC:7}});
+  assert.equal((await b.wait(m=>m.event==='teach_action' && m.state.teachState.annotations['arrow:3,3-7,7'])).state.teachState.annotations['arrow:3,3-7,7'].type,'arrow');
+  a.send({type:'teach_action',action:'clear_annotations'});
+  assert.deepEqual((await b.wait(m=>m.event==='teach_action' && !Object.keys(m.state.teachState.annotations).length)).state.teachState.annotations,{});
   a.send({type:'configure_room',config:{gameType:'go',mode:'teach',boardSize:9,komi:6.5,timeControl:'none'}});
   const back = await b.wait(m => m.event === 'configure_room' && m.changed);
   assert.equal(back.state.boardSize,9); assert.equal(back.state.roomId,created.roomId); assert.equal(back.state.historyLength,0);
@@ -112,5 +120,5 @@ test('real server: multiple clients, scoring, resize, rematch, room cleanup and 
   missing.send({ type: 'join_room', roomId: 'ZZZZZZ' });
   assert.equal((await missing.wait(m => m.type === 'action_error')).code, 'room_missing');
   assert.equal((await fetch(`${url}/api/room/ZZZZZZ`)).status, 404);
-  for (const path of [`/room/${created.roomId}`, '/app.js', '/board.js', '/chess-board.js', '/audio.js', '/style.css', '/health']) assert.equal((await fetch(url + path)).status, 200);
+  for (const path of [`/room/${created.roomId}`, '/app.js', '/board.js', '/chess-board.js', '/chess-pieces.js', '/annotations.js', '/audio.js', '/style.css', '/health']) assert.equal((await fetch(url + path)).status, 200);
 });
