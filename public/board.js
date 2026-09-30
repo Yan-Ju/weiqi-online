@@ -58,11 +58,15 @@ export class GoBoardSVG {
     // Defs: Gradients and Filters
     const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
     defs.innerHTML = `
+      <pattern id="woodGrain" width="800" height="120" patternUnits="userSpaceOnUse">
+        <path d="M0 9Q200 15 400 9T800 9M0 30Q250 15 490 30T800 30M0 39Q280 32 540 39T800 39M0 69Q200 85 430 69T800 69M0 75Q220 86 450 75T800 75M0 108Q350 94 600 108T800 108" fill="none" stroke="#87622f" stroke-width=".8" opacity=".2"/>
+        <path d="M0 12Q200 18 400 12T800 12M0 72Q200 88 430 72T800 72" fill="none" stroke="#fff7cb" stroke-width="2" opacity=".17"/>
+      </pattern>
       <!-- Board Wood Grain Gradient -->
       <radialGradient id="boardBgGrad" cx="45%" cy="40%" r="70%">
-        <stop offset="0%" stop-color="#dfb476" />
-        <stop offset="70%" stop-color="#cb9f5b" />
-        <stop offset="100%" stop-color="#b68943" />
+        <stop offset="0%" stop-color="#efd1a1" />
+        <stop offset="70%" stop-color="#d6b079" />
+        <stop offset="100%" stop-color="#bf935d" />
       </radialGradient>
 
       <!-- Board Outer Shadow -->
@@ -77,8 +81,8 @@ export class GoBoardSVG {
 
       <!-- 3D Black Stone Radial Gradient -->
       <radialGradient id="blackStoneGrad" cx="35%" cy="30%" r="65%">
-        <stop offset="0%" stop-color="#555555" />
-        <stop offset="35%" stop-color="#2a2a2a" />
+        <stop offset="0%" stop-color="#59616a" />
+        <stop offset="35%" stop-color="#2b3038" />
         <stop offset="85%" stop-color="#111111" />
         <stop offset="100%" stop-color="#050505" />
       </radialGradient>
@@ -93,7 +97,7 @@ export class GoBoardSVG {
 
       <!-- Ghost Black -->
       <radialGradient id="ghostBlack" cx="35%" cy="30%" r="65%">
-        <stop offset="0%" stop-color="#555555" stop-opacity="0.6" />
+        <stop offset="0%" stop-color="#59616a" stop-opacity="0.6" />
         <stop offset="100%" stop-color="#111111" stop-opacity="0.6" />
       </radialGradient>
 
@@ -115,6 +119,9 @@ export class GoBoardSVG {
     bgRect.setAttribute('fill', 'url(#boardBgGrad)');
     bgRect.setAttribute('filter', 'url(#boardShadow)');
     svg.appendChild(bgRect);
+    const grain = document.createElementNS('http://www.w3.org/2000/svg','rect');
+    grain.setAttribute('width',800); grain.setAttribute('height',800); grain.setAttribute('rx',14); grain.setAttribute('fill','url(#woodGrain)'); grain.setAttribute('pointer-events','none'); svg.append(grain);
+
 
     // Inner Board Border
     const borderRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -136,7 +143,7 @@ export class GoBoardSVG {
     for (let i = 0; i < this.size; i++) {
       const pos = this.padding + i * this.cellSize;
       const isEdge = i === 0 || i === this.size - 1;
-      const strokeW = isEdge ? '2.4' : '1.4';
+      const strokeW = isEdge ? '2' : '1.15';
 
       // Horizontal line
       const hLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -340,6 +347,12 @@ export class GoBoardSVG {
         circle.setAttribute('fill', color === 1 ? 'url(#blackStoneGrad)' : 'url(#whiteStoneGrad)');
         circle.setAttribute('filter', 'url(#stoneShadow)');
         group.appendChild(circle);
+        const sheen = document.createElementNS('http://www.w3.org/2000/svg','ellipse');
+        sheen.setAttribute('cx',cx-this.stoneRadius*.22); sheen.setAttribute('cy',cy-this.stoneRadius*.32);
+        sheen.setAttribute('rx',this.stoneRadius*.46); sheen.setAttribute('ry',this.stoneRadius*.23);
+        sheen.setAttribute('fill','#ffffff'); sheen.setAttribute('opacity',color===1 ? '.10' : '.34');
+        group.appendChild(sheen);
+
 
         // Move number or dead stone X
         if (isDead) {

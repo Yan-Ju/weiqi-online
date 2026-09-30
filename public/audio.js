@@ -1,122 +1,34 @@
-/**
- * Audio Engine for Weiqi Online
- * Synthesizes stone clicks, captures, and alerts using Web Audio API.
- * 100% reliable, zero external MP3 downloads required.
- */
+// Layered, softly limited impacts. Generated locally; no media downloads.
 class SoundEngine {
-  constructor() {
-    this.ctx = null;
-    this.enabled = true;
-  }
-
+  constructor() { this.ctx = null; this.enabled = localStorage.getItem('boardroom_sound') !== 'false'; this.unlocked = false; }
   init() {
-    if (!this.ctx) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) {
-        this.ctx = new AudioCtx();
-      }
+    if (!this.unlocked) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!this.ctx && AudioContext) {
+      this.ctx = new AudioContext();
+      this.master = this.ctx.createGain(); this.master.gain.value = .38;
+      this.limiter = this.ctx.createDynamicsCompressor(); this.limiter.threshold.value = -12;
+      this.master.connect(this.limiter); this.limiter.connect(this.ctx.destination);
     }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
+    if (this.ctx?.state === 'suspended') this.ctx.resume().catch(() => {});
   }
-
-  playStoneClick() {
-    if (!this.enabled) return;
-    this.init();
-    if (!this.ctx) return;
-
-    const t = this.ctx.currentTime;
-
-    // Transient wood impact (noise)
-    const bufferSize = this.ctx.sampleRate * 0.04;
-    const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const output = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      output[i] = Math.random() * 2 - 1;
-    }
-
-    const whiteNoise = this.ctx.createBufferSource();
-    whiteNoise.buffer = noiseBuffer;
-
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(800, t);
-    filter.frequency.exponentialRampToValueAtTime(100, t + 0.04);
-
-    const noiseGain = this.ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.5, t);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
-
-    whiteNoise.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(this.ctx.destination);
-    whiteNoise.start(t);
-
-    // Stone body resonance
-    const osc = this.ctx.createOscillator();
-    const oscGain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(380, t);
-    osc.frequency.exponentialRampToValueAtTime(120, t + 0.07);
-
-    oscGain.gain.setValueAtTime(0.7, t);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
-
-    osc.connect(oscGain);
-    oscGain.connect(this.ctx.destination);
-
-    osc.start(t);
-    osc.stop(t + 0.08);
+  tone(frequency, time, duration, volume, type='sine') {
+    const osc=this.ctx.createOscillator(), gain=this.ctx.createGain(); osc.type=type; osc.frequency.setValueAtTime(frequency,time);
+    gain.gain.setValueAtTime(0,time); gain.gain.linearRampToValueAtTime(volume,time+.003); gain.gain.exponentialRampToValueAtTime(.0001,time+duration);
+    osc.connect(gain); gain.connect(this.master); osc.onended=() => {osc.disconnect();gain.disconnect();}; osc.start(time); osc.stop(time+duration+.02);
   }
-
-  playCaptureSound() {
-    if (!this.enabled) return;
-    this.playStoneClick();
-    setTimeout(() => {
-      if (!this.ctx) return;
-      const t = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(600, t);
-      osc.frequency.exponentialRampToValueAtTime(300, t + 0.06);
-
-      gain.gain.setValueAtTime(0.4, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
-
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-
-      osc.start(t);
-      osc.stop(t + 0.07);
-    }, 45);
+  playStoneClick(game='go') {
+    if(!this.enabled) return; this.init(); if(!this.ctx || this.ctx.state !== 'running') return;
+    const t=this.ctx.currentTime, chess=game==='chess';
+    const duration=chess ? .09 : .055, n=Math.ceil(this.ctx.sampleRate*duration), buffer=this.ctx.createBuffer(1,n,this.ctx.sampleRate), data=buffer.getChannelData(0);
+    for(let i=0;i<n;i++) data[i]=(Math.random()*2-1)*Math.exp(-i/(n*.16));
+    const noise=this.ctx.createBufferSource(), filter=this.ctx.createBiquadFilter(), gain=this.ctx.createGain();
+    noise.buffer=buffer; filter.type='bandpass'; filter.frequency.value=chess ? 850 : 2400; filter.Q.value=.7; gain.gain.value=chess ? .6 : .42;
+    noise.connect(filter); filter.connect(gain); gain.connect(this.master); noise.onended=() => {noise.disconnect();filter.disconnect();gain.disconnect();}; noise.start(t);
+    this.tone(chess ? 190 : 670,t,chess ? .16 : .09,.3); this.tone(chess ? 410 : 1380,t,.05,.12);
   }
-
-  playAlertSound() {
-    if (!this.enabled) return;
-    this.init();
-    if (!this.ctx) return;
-
-    const t = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(220, t);
-    osc.frequency.setValueAtTime(180, t + 0.08);
-
-    gain.gain.setValueAtTime(0.3, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-
-    osc.connect(gain);
-    gain.connect(this.ctx.destination);
-
-    osc.start(t);
-    osc.stop(t + 0.22);
-  }
+  playCaptureSound() { if(!this.enabled) return; this.init(); if(!this.ctx || this.ctx.state !== 'running') return; this.tone(520,this.ctx.currentTime+.035,.1,.12); this.tone(780,this.ctx.currentTime+.065,.14,.08); }
+  playAlertSound() { if(!this.enabled) return; this.init(); if(!this.ctx || this.ctx.state !== 'running') return; const t=this.ctx.currentTime; this.tone(330,t,.16,.16); this.tone(440,t+.08,.2,.1); }
 }
-
 export const sound = new SoundEngine();
+for(const event of ['pointerdown','keydown']) document.addEventListener(event,() => { sound.unlocked=true; sound.init(); },{once:true});

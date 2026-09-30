@@ -1,4 +1,5 @@
 import { GoRules } from './goRules.js';
+import { ChessRules } from './chessRules.js';
 
 export class RoomManager {
   constructor() {
@@ -23,7 +24,8 @@ export class RoomManager {
       roomId = this.generateRoomId();
     }
 
-    const boardSize = [9, 13, 19].includes(Number(config.boardSize)) ? Number(config.boardSize) : 19;
+    const gameType = config.gameType === 'chess' ? 'chess' : 'go';
+    const boardSize = gameType === 'chess' ? 8 : ([9, 13, 19].includes(Number(config.boardSize)) ? Number(config.boardSize) : 19);
     const mode = config.mode === 'teach' ? 'teach' : 'match';
     const handicap = Math.min(boardSize === 19 ? 9 : 5, Math.max(0, Math.trunc(Number(config.handicap) || 0)));
     const komi = Number.isFinite(Number(config.komi)) ? Math.min(100, Math.max(0, Number(config.komi))) : 6.5;
@@ -39,10 +41,12 @@ export class RoomManager {
       increment = Math.min(600, Math.max(0, Number(config.customIncrement ?? 10) || 0));
     }
 
-    const game = new GoRules(boardSize, handicap, komi);
+    const game = gameType === 'chess' ? new ChessRules() : new GoRules(boardSize, handicap, komi);
 
     const room = {
       roomId,
+      revision: 0,
+      gameType,
       mode,
       boardSize,
       handicap,
@@ -52,7 +56,7 @@ export class RoomManager {
         mainTime,
         increment
       },
-      creatorColorPref: config.colorPref || 'black', // 'black', 'white', 'random'
+      creatorColorPref: config.colorPref || (gameType === 'chess' ? 'white' : 'black'), // 'black', 'white', 'random'
       game,
       status: mode === 'teach' ? 'playing' : 'waiting', // waiting, playing, scoring, finished
       winner: null,
@@ -79,6 +83,8 @@ export class RoomManager {
         result: null
       },
       emptySince: Date.now(),
+      pendingConfig: null,
+      drawOffer: null,
       newGameAgreed: { black: false, white: false },
       createdAt: Date.now(),
       lastActivity: Date.now()
@@ -174,6 +180,7 @@ export class RoomManager {
 
     client.roomId = null;
     client.role = null;
+    room.pendingConfig = null; room.drawOffer = null;
 
     room.newGameAgreed = { black: false, white: false };
     room.scoringState.agreed = { black: false, white: false };
@@ -199,12 +206,15 @@ export class RoomManager {
   }
 
   resetGame(room, size = room.boardSize) {
-    room.boardSize = size;
+    room.revision++;
+    room.boardSize = room.gameType === 'chess' ? 8 : size;
     room.handicap = Math.min(room.handicap, size === 19 ? 9 : 5);
-    room.game = new GoRules(size, room.handicap, room.komi);
+    room.game = room.gameType === 'chess' ? new ChessRules() : new GoRules(size, room.handicap, room.komi);
     room.winner = null;
     room.winnerReason = null;
-    room.teachState.annotations = {};
+    room.teachState = { placementMode: 'alternate', annotations: {} };
+    room.pendingConfig = null;
+    room.drawOffer = null;
     room.scoringState = { active: false, agreed: { black: false, white: false }, result: null };
     room.newGameAgreed = { black: false, white: false };
     room.status = room.mode === 'teach' || (room.players.black && room.players.white) ? 'playing' : 'waiting';
@@ -216,6 +226,7 @@ export class RoomManager {
   changeBoardSize(client, size) {
     const room = this.rooms.get(client.roomId);
     if (!this.isPlayer(room, client)) return { success: false, reason: '观战者不能更改棋盘' };
+    if (room.gameType === 'chess') return { success: false, reason: '国际象棋棋盘固定为 8×8' };
     if (![9, 13, 19].includes(size)) return { success: false, reason: '棋盘尺寸无效' };
     if (room.mode === 'match' && (room.game.history.length || room.status === 'scoring' || room.status === 'finished')) return { success: false, reason: '请双方先同意新一局，再切换棋盘' };
     this.resetGame(room, size);
@@ -225,12 +236,65 @@ export class RoomManager {
   newGame(client) {
     const room = this.rooms.get(client.roomId);
     if (!this.isPlayer(room, client)) return { success: false, reason: '观战者不能重开对局' };
+    if (room.mode === 'match' && room.game.history.length && (!room.players.black || !room.players.white)) return { success: false, reason: '请等待对手回房间后确认新一局' };
     room.newGameAgreed[client.role] = true;
     if (room.mode === 'teach' || !(room.players.black && room.players.white) || (room.newGameAgreed.black && room.newGameAgreed.white)) {
       this.resetGame(room);
       return { success: true, restarted: true };
     }
     return { success: true, restarted: false };
+  }
+
+  configureRoom(client, config = {}) {
+    const room = this.rooms.get(client.roomId);
+    if (!this.isPlayer(room, client)) return { success: false, reason: '观战者不能更改房间设置' };
+    if (!config || !['go', 'chess'].includes(config.gameType) || !['teach', 'match'].includes(config.mode)) return { success: false, reason: '房间设置无效' };
+    const normalized = {
+      gameType: config.gameType, mode: config.mode,
+      boardSize: config.gameType === 'chess' ? 8 : ([9,13,19].includes(config.boardSize) ? config.boardSize : 19),
+      handicap: config.gameType === 'chess' ? 0 : Math.max(0, Math.min(9, Math.trunc(Number(config.handicap) || 0))),
+      komi: config.gameType === 'chess' ? 0 : Math.max(0, Math.min(100, Number(config.komi) || 0)),
+      timeControl: ['none','1m10s','1m20s','15m20s'].includes(config.timeControl) ? config.timeControl : 'none'
+    };
+    if (room.mode === 'match' && (room.players.black && room.players.white || room.game.history.length)) {
+      if (!room.players.black || !room.players.white) return { success: false, reason: '请等待对手回到房间后确认更换' };
+      room.pendingConfig = { config: normalized, by: client.role, id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, expiresAt: Date.now() + 60000 };
+      return { success: true, pending: true };
+    }
+    this.applyConfig(room, normalized);
+    return { success: true, changed: true };
+  }
+
+  applyConfig(room, config) {
+    Object.assign(room, { gameType: config.gameType, mode: config.mode, boardSize: config.boardSize, handicap: config.handicap, komi: config.komi });
+    const times = { none: [0,0], '1m10s': [60,10], '1m20s': [60,20], '15m20s': [900,20] };
+    const [mainTime, increment] = times[config.timeControl];
+    room.timeControl = { type: config.timeControl, mainTime, increment };
+    room.clocks.increment = increment;
+    this.resetGame(room);
+  }
+
+  respondConfig(client, id, accept) {
+    const room = this.rooms.get(client.roomId), proposal = room?.pendingConfig;
+    if (!this.isPlayer(room, client) || !proposal || proposal.id !== id || proposal.expiresAt < Date.now()) return { success: false, reason: '设置申请已失效，请重新申请' };
+    if (accept && proposal.by === client.role) return { success: false, reason: '需要对手确认' };
+    if (accept && (!room.players.black || !room.players.white)) return { success: false, reason: '请等待双方在线后再确认' };
+    if (accept) this.applyConfig(room, proposal.config);
+    else room.pendingConfig = null;
+    return { success: true, changed: !!accept, cancelled: !accept };
+  }
+
+  offerDraw(client) {
+    const room = this.rooms.get(client.roomId);
+    if (!this.isPlayer(room,client) || room.gameType !== 'chess' || room.mode !== 'match' || room.status !== 'playing') return { success:false, reason:'当前不能提和' };
+    this.updateClocks(room);
+    if (room.status === 'finished') return { success:false, reason:'对局已超时' };
+    if (room.drawOffer && room.drawOffer !== client.role) {
+      room.status = 'finished'; room.winner = 'draw'; room.winnerReason = '双方同意和棋'; room.clocks.active = false; room.drawOffer = null;
+      return { success:true, finished:true };
+    }
+    room.drawOffer = client.role;
+    return { success:true, offered:true };
   }
 
   resumeGame(client) {
@@ -276,7 +340,7 @@ export class RoomManager {
     }
   }
 
-  handleMove(client, r, c) {
+  handleMove(client, r, c, toR = null, toC = null, promotion = 'q') {
     const room = this.rooms.get(client.roomId);
     if (!room) return { success: false, reason: '房间不存在' };
     if (!this.isPlayer(room, client)) return { success: false, reason: '观战者不能操作对局' };
@@ -312,7 +376,9 @@ export class RoomManager {
       return { success: false, reason: '对局已超时结束' };
     }
 
-    const moveRes = room.game.playMove(r, c, forcedColor, room.mode === 'teach');
+    const moveRes = room.gameType === 'chess'
+      ? room.game.playMove(r, c, toR, toC, forcedColor, room.mode === 'teach', promotion)
+      : room.game.playMove(r, c, forcedColor, room.mode === 'teach');
     if (!moveRes.success) {
       return moveRes;
     }
@@ -327,6 +393,11 @@ export class RoomManager {
     }
     room.clocks.lastTick = Date.now();
     room.lastActivity = Date.now();
+    room.pendingConfig = null; room.drawOffer = null;
+    room.newGameAgreed = { black: false, white: false };
+    if (moveRes.outcome && room.mode === 'match') {
+      room.status = 'finished'; room.winner = moveRes.outcome.winner; room.winnerReason = moveRes.outcome.reason; room.clocks.active = false;
+    }
 
     return {
       success: true,
@@ -350,9 +421,11 @@ export class RoomManager {
       }
     }
 
+    if (room.gameType === 'chess') return { success: false, reason: '国际象棋没有停着' };
     const color = room.game.currentTurn;
     if (room.clocks.active) room.clocks[color === 1 ? 'blackTime' : 'whiteTime'] += room.clocks.increment;
     const passRes = room.game.pass(color);
+    room.pendingConfig = null; room.newGameAgreed = { black: false, white: false };
     room.lastActivity = Date.now();
     if (passRes.isGameOver) {
       // Enter scoring mode
@@ -394,6 +467,8 @@ export class RoomManager {
         room.teachState.placementMode = payload.mode;
         return { success: true, placementMode: payload.mode };
       }
+    } else if (room.gameType === 'chess' && ['set_chess_piece','move_piece','clear_board','set_turn'].includes(action)) {
+      return room.game.edit(action, payload);
     } else if (action === 'undo') {
       const ok = room.game.undo();
       return { success: ok };
@@ -422,6 +497,7 @@ export class RoomManager {
     const room = this.rooms.get(client.roomId);
     if (!room) return { success: false };
     if (!this.isPlayer(room, client) || room.status !== 'playing') return { success: false, reason: '当前不能开始点目' };
+    if (room.gameType === 'chess') return { success: false, reason: '国际象棋以将死、认输或超时结束' };
     this.updateClocks(room);
     if (room.status === 'finished') return { success: false, reason: '对局已超时' };
     room.game.deadStones = {};
@@ -478,6 +554,8 @@ export class RoomManager {
 
     return {
       roomId: room.roomId,
+      revision: room.revision,
+      gameType: room.gameType,
       mode: room.mode,
       boardSize: room.boardSize,
       handicap: room.handicap,
@@ -493,7 +571,7 @@ export class RoomManager {
       stepCount: room.game.history.length,
       historyLength: room.game.history.length,
       redoLength: room.game.redoStack.length,
-      lastMove: room.game.history.length > 0 ? (({ type, r, c, color, step }) => ({ type, r, c, color, step }))(room.game.history.at(-1)) : null,
+      lastMove: room.game.history.length > 0 ? (({ type, r, c, color, step, fromR, fromC, san }) => ({ type, r, c, color, step, fromR, fromC, san }))(room.game.history.at(-1)) : null,
       players: {
         black: room.players.black ? { name: room.players.black.playerName } : null,
         white: room.players.white ? { name: room.players.white.playerName } : null,
@@ -514,6 +592,13 @@ export class RoomManager {
         whiteTime: Math.ceil(room.clocks.whiteTime),
         active: room.clocks.active
       },
+      pendingConfig: room.pendingConfig?.expiresAt > Date.now() ? room.pendingConfig : null,
+      drawOffer: room.drawOffer,
+      chess: room.gameType === 'chess' ? {
+        check: room.mode === 'match' && room.game.engine.isCheck(),
+        legalMoves: room.mode === 'match' && room.status === 'playing' ? room.game.legalMoves() : [],
+        moves: room.game.history.filter(m => m.san).map(m => m.san)
+      } : null,
       newGameAgreed: room.newGameAgreed,
       teachState: room.teachState,
       scoringState: room.scoringState.active ? {

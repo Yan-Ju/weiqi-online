@@ -1,8 +1,15 @@
 import { GoBoardSVG } from './board.js';
+import { ChessBoard, pieceSVG } from './chess-board.js';
 import { sound } from './audio.js';
 
 // Global state
 let board = null;
+let selectedGameType = 'go';
+let renderedGameType = 'go';
+let setupNewRoom = true;
+let pendingPromotion = null;
+let chessSelection = null;
+let chessSetupPiece = 'move';
 let ws = null;
 let currentRoomId = null;
 let currentRoomState = null;
@@ -25,15 +32,15 @@ function closeEstimate() {
   stopEstimateJob(); estimateEnabled = false; estimateResult = null; estimateKey = '';
   document.getElementById('estimate-panel').hidden = true;
   document.getElementById('btn-estimate').textContent = '形势估算';
-  if (currentRoomState) { board.territoryMap = currentRoomState.scoringState?.active ? currentRoomState.scoringState.result?.territoryMap : null; board.renderTerritory(); }
+  if (currentRoomState && board?.renderTerritory) { board.territoryMap = currentRoomState.scoringState?.active ? currentRoomState.scoringState.result?.territoryMap : null; board.renderTerritory(); }
 }
 function refreshEstimate(force = false) {
-  if (!estimateEnabled || !currentRoomState) return;
+  if (!estimateEnabled || !currentRoomState || currentRoomState.gameType === 'chess') return;
   const state = currentRoomState;
   const key = JSON.stringify([state.roomId,state.board,state.currentTurn,state.komi]);
   if (!force && key === estimateKey) return;
   estimateKey = key; stopEstimateJob(); estimateResult = null;
-  board.territoryMap = null; board.renderTerritory();
+  if (board?.renderTerritory) { board.territoryMap = null; board.renderTerritory(); }
   document.getElementById('estimate-details').hidden = true;
   document.getElementById('estimate-progress').textContent = '正在分析势力…';
   estimateTimer = setTimeout(() => {
@@ -47,7 +54,7 @@ function refreshEstimate(force = false) {
         if (estimateWorker !== worker || !estimateEnabled || estimateKey !== key) return;
         if (data.error) { fail(); return; }
         stopEstimateJob(); estimateResult = data.result;
-        board.territoryMap = estimateResult.territoryMap; board.renderTerritory();
+        if (board?.renderTerritory) { board.territoryMap = estimateResult.territoryMap; board.renderTerritory(); }
         const r = estimateResult;
         for (const color of ['black','white']) for (const [suffix,field] of [['stones','Stones'],['area','Area'],['territory','Territory']]) document.getElementById(`est-${color}-${suffix}`).textContent = r[color+field];
         document.getElementById('est-black-dead').textContent = '未判断';
@@ -134,14 +141,16 @@ function getRoomIdFromURL() {
 function setRoomURL(roomId) {
   const newUrl = `${window.location.protocol}//${window.location.host}/?room=${roomId}`;
   window.history.pushState({ roomId }, '', newUrl);
-  document.getElementById('invite-url-input').value = newUrl;
+
 }
 
 // Initialize Board SVG
-function initBoard(size = 19) {
-  selectedSize = size;
-  board = new GoBoardSVG('board-container', {
-    size: selectedSize,
+function initBoard(size = 19, gameType = selectedGameType) {
+  renderedGameType = gameType;
+  chessSelection = null;
+  const BoardClass = gameType === 'chess' ? ChessBoard : GoBoardSVG;
+  board = new BoardClass('board-container', {
+    size,
     interactive: true,
     onIntersectionClick: handleIntersectionClick,
     onHoverChange: (r, c) => {
@@ -153,10 +162,12 @@ function initBoard(size = 19) {
 }
 
 function updateBoardTitleAndSwitches(size) {
-  document.getElementById('board-title').textContent = `${size} × ${size} 棋盘`;
+  document.getElementById('board-title').textContent = renderedGameType === 'chess' ? '国际象棋 · 8 × 8' : `${size} × ${size} 棋盘`;
   document.querySelectorAll('.board-size-btn').forEach(btn => {
     btn.classList.toggle('active', Number(btn.dataset.size) === Number(size));
+    btn.hidden = renderedGameType === 'chess';
   });
+  document.getElementById('brand-title').textContent = renderedGameType === 'chess' ? '棋局在线 · 国际象棋' : '棋局在线 · 围棋';
 }
 
 // Connect to WebSocket Server
@@ -220,12 +231,13 @@ function handleServerMessage(msg) {
 
     case 'room_state': {
       applyRoomState(msg.state);
+      if (['configure_room', 'respond_config'].includes(msg.event)) { document.getElementById('btn-submit-match').disabled = false; closeSetupModal(); showToast(msg.pending ? '已申请更换设置，等待对手确认' : msg.cancelled ? '设置申请已取消' : '房间设置已更新'); }
       if (msg.event) handleServerMessage({ ...msg, type: msg.event });
       break;
     }
 
     case 'move_played': {
-      sound.playStoneClick();
+      sound.playStoneClick(renderedGameType);
       if (msg.move && msg.move.captured && msg.move.captured.length > 0) {
         sound.playCaptureSound();
       }
@@ -235,7 +247,7 @@ function handleServerMessage(msg) {
     case 'action_error': {
       creatingRoom = false;
       document.getElementById('btn-submit-match').disabled = false;
-      if (msg.code === 'room_missing') { currentRoomState = null; currentRoomId = null; closeScoringModal(); openSetupModal(); }
+      if (msg.code === 'room_missing') { currentRoomState = null; currentRoomId = null; document.getElementById('btn-copy-link').disabled = true; for (const id of ['btn-copy-link','btn-open-settings','room-tag']) document.getElementById(id).hidden = true; document.getElementById('btn-create-another').textContent = '创建房间'; closeScoringModal(); openSetupModal(); }
       sound.playAlertSound();
       showToast('⚠️ ' + msg.reason);
       break;
@@ -253,6 +265,7 @@ function handleServerMessage(msg) {
       break;
     }
 
+    case 'teach_action': { if (renderedGameType === 'chess') sound.playStoneClick('chess'); break; }
     case 'dead_toggled': {
       sound.playStoneClick();
       updateScoringUI(msg.result);
@@ -291,13 +304,18 @@ function applyRoomState(state) {
   const wasScoring = currentRoomState?.status === 'scoring';
   if (!wasScoring && state.status === 'scoring') { scoringPanelHidden = false; estimatePreview = false; }
   if (state.status === 'scoring') closeEstimate();
+  const boardChanged = JSON.stringify([currentRoomState?.revision,currentRoomState?.board,currentRoomState?.gameType,currentRoomState?.mode,currentRoomState?.status]) !== JSON.stringify([state.revision,state.board,state.gameType,state.mode,state.status]);
+  if (boardChanged) { chessSelection = null; pendingPromotion = null; document.getElementById('promotion-modal').classList.remove('active'); }
   currentRoomState = state;
   currentRoomId = state.roomId;
   myRole = state.myRole;
   updateRoleDisplay(myRole);
 
   // Resize board if changed
-  if (board.size !== state.boardSize) {
+  if (renderedGameType !== (state.gameType || 'go')) {
+    closeEstimate(); closeScoringModal();
+    initBoard(state.boardSize, state.gameType || 'go');
+  } else if (board.size !== state.boardSize && renderedGameType === 'go') {
     board.setSize(state.boardSize);
     updateBoardTitleAndSwitches(state.boardSize);
   }
@@ -314,13 +332,13 @@ function applyRoomState(state) {
     teachPanel.style.display = 'flex';
     matchPanel.style.display = 'none';
     clocksBox.style.display = 'none';
-    document.getElementById('board-subtitle').textContent = '教学模式：双方均可自由指定黑白子、撤销悔棋与摆设死活题。';
+    document.getElementById('board-subtitle').textContent = renderedGameType === 'chess' ? '摆棋模式：选择棋子后点击棋盘放置；橡皮可清除棋子。' : '教学模式：双方均可自由指定黑白子、撤销悔棋与摆设死活题。';
   } else {
     modeBadge.textContent = '⚔️ 对战模式';
     modeBadge.className = 'mode-badge match';
     teachPanel.style.display = 'none';
     matchPanel.style.display = 'flex';
-    document.getElementById('board-subtitle').textContent = '点击交叉点落子，黑白双方轮流进行。';
+    document.getElementById('board-subtitle').textContent = renderedGameType === 'chess' ? '选择棋子，再点击目标格。白方先行。' : '点击交叉点落子，黑白双方轮流进行。';
 
     if (state.timeControl && state.timeControl.type !== 'none') {
       clocksBox.style.display = 'flex';
@@ -329,7 +347,13 @@ function applyRoomState(state) {
     }
   }
 
+  document.getElementById('chess-setup-tools').hidden = renderedGameType !== 'chess' || state.mode !== 'teach';
+  document.querySelector('.teach-row-mode').hidden = renderedGameType === 'chess';
+
   // Board visual state update
+  if (renderedGameType === 'chess') {
+    board.updateState(state.board, { lastMove: state.lastMove, legalMoves: state.chess?.legalMoves || [], clearSelection: boardChanged, interactive: (myRole === 'black' || myRole === 'white') && state.status === 'playing' });
+  } else {
   board.hoverColor = state.teachState && state.mode === 'teach'
     ? (state.teachState.placementMode === 'white_only' ? 2 : (state.teachState.placementMode === 'black_only' ? 1 : state.currentTurn))
     : state.currentTurn;
@@ -342,6 +366,7 @@ function applyRoomState(state) {
     moveNumbersMap: state.moveNumbersMap || {},
     hoverColor: board.hoverColor
   });
+  }
 
   refreshEstimate();
 
@@ -403,7 +428,7 @@ function applyRoomState(state) {
     statusEl.textContent = '等待好友加入...点击右上角“邀请好友”复制链接。';
   } else if (state.status === 'playing') {
     const roleMsg = myRole === 'black' ? '您执黑棋' : (myRole === 'white' ? '您执白棋' : '您正在观战');
-    const turnMsg = state.currentTurn === 1 ? '黑棋先行' : '轮到白棋';
+    const turnMsg = state.currentTurn === 1 ? '轮到黑棋' : '轮到白棋';
     statusEl.textContent = `对局进行中 (${roleMsg})。${turnMsg}。`;
   } else if (state.status === 'scoring') {
     statusEl.textContent = '🏁 终局点目阶段：点击棋盘死子进行标记，确认无误后点击确认。';
@@ -418,7 +443,7 @@ function applyRoomState(state) {
   }
 
   if (state.status !== 'scoring' && !estimatePreview) closeScoringModal();
-  document.getElementById('btn-estimate').disabled = state.status === 'scoring';
+  document.getElementById('btn-estimate').disabled = state.status === 'scoring' || renderedGameType === 'chess';
   const isPlayer = myRole === 'black' || myRole === 'white';
   document.getElementById('btn-show-scoring').hidden = state.status !== 'scoring';
   document.getElementById('btn-resume-game').hidden = state.status !== 'scoring';
@@ -427,7 +452,7 @@ function applyRoomState(state) {
   document.getElementById('btn-scoring-confirm').disabled = estimatePreview || !isPlayer || !!state.scoringState?.agreed?.[myRole];
   document.getElementById('btn-new-game').disabled = !isPlayer;
   document.getElementById('btn-new-game').textContent = Object.values(state.newGameAgreed || {}).some(Boolean) ? '同意开始新一局' : '开始新一局';
-  for (const id of ['btn-match-pass', 'btn-match-score', 'btn-match-resign', 'btn-teach-pass', 'btn-teach-scoring']) document.getElementById(id).disabled = !isPlayer || state.status !== 'playing';
+  for (const id of ['btn-match-pass', 'btn-match-score', 'btn-match-resign', 'btn-teach-pass', 'btn-teach-scoring']) document.getElementById(id).disabled = !isPlayer || state.status !== 'playing' || (renderedGameType === 'chess' && id !== 'btn-match-resign');
   if (Object.values(state.newGameAgreed || {}).some(Boolean)) statusEl.textContent += ' 有玩家申请新一局，请点击“同意开始新一局”。';
 
   // Teaching mode controls update
@@ -442,167 +467,162 @@ function applyRoomState(state) {
     const totalMoves = state.historyLength + state.redoLength;
     stepEl.textContent = `第 ${state.historyLength} / ${totalMoves} 手`;
 
-    document.getElementById('btn-teach-undo').disabled = state.historyLength === 0;
-    document.getElementById('btn-teach-redo').disabled = state.redoLength === 0;
+    document.getElementById('btn-teach-undo').disabled = !isPlayer || state.historyLength === 0;
+    document.getElementById('btn-teach-redo').disabled = !isPlayer || state.redoLength === 0;
     document.getElementById('btn-step-prev').disabled = state.historyLength === 0;
     document.getElementById('btn-step-next').disabled = state.redoLength === 0;
   }
+  updateBoardTitleAndSwitches(state.boardSize);
+  const chess = renderedGameType === 'chess';
+  document.body.dataset.game = renderedGameType;
+  document.getElementById('btn-copy-link').disabled = false;
+  for (const id of ['btn-copy-link','btn-open-settings','room-tag']) document.getElementById(id).hidden = false;
+  document.getElementById('btn-create-another').textContent = '新房间';
+  document.getElementById('btn-open-settings').disabled = !isPlayer;
+  document.getElementById('player-black').textContent = `黑方 · ${state.players.black?.name || '等待入座'}`;
+  document.getElementById('player-white').textContent = `白方 · ${state.players.white?.name || '等待入座'}`;
+  document.getElementById('board-material').textContent = chess ? '胡桃木与枫木 / 立体雕刻棋子' : '榧木色棋盘 / 黑玉与白贝';
+  document.getElementById('btn-flip').hidden = !chess;
+  document.querySelector('.board-size-switches').hidden = chess;
+  for (const id of ['btn-estimate','btn-match-pass','btn-match-score','btn-teach-pass','btn-teach-scoring','btn-toggle-numbers']) document.getElementById(id).hidden = chess;
+  document.getElementById('btn-draw').hidden = !chess;
+  document.getElementById('btn-draw').disabled = !isPlayer || state.status !== 'playing' || state.drawOffer === myRole;
+  document.getElementById('btn-draw').textContent = state.drawOffer && state.drawOffer !== myRole ? '同意和棋' : state.drawOffer ? '已提和，等待回应' : '提议和棋';
+  document.getElementById('match-hint').textContent = chess ? '将军时必须解将；支持易位、吃过路兵及四种升变。' : '双方连续停着或点击“终局点目”进入胜负判定';
+  document.getElementById('chess-moves-panel').hidden = !chess || state.mode === 'teach';
+  document.getElementById('chess-moves').textContent = state.chess?.moves?.map((m,i) => i % 2 === 0 ? `${Math.floor(i/2)+1}. ${m}` : m).join('  ') || '等待第一步';
+  document.getElementById('chess-turn').value = String(state.currentTurn);
+  for (const el of document.querySelectorAll('#chess-setup-tools button, #chess-setup-tools select, #btn-teach-reset, .teach-step-nav button')) el.disabled = !isPlayer;
+  if (chess) {
+    document.getElementById('board-captures-count').textContent = `吃子：白 ${wCaptures} · 黑 ${bCaptures}`;
+    turnText.textContent = state.mode === 'teach' ? '自由摆棋' : `${state.currentTurn === 2 ? '白' : '黑'}方行棋${state.chess?.check ? ' · 将军' : ''}`;
+    if (state.status === 'finished') turnText.textContent = '对局结束';
+    if (state.mode === 'teach') statusEl.textContent = '选择棋子放置，或选择“移动”调整位置；双方可共同编辑。';
+  }
+  const proposal = state.pendingConfig;
+  document.getElementById('config-proposal').hidden = !proposal;
+  if (proposal) {
+    const cfg = proposal.config;
+    document.getElementById('config-proposal-text').textContent = `${proposal.by === 'black' ? '黑' : '白'}方申请：${cfg.gameType === 'chess' ? '国际象棋' : `围棋 ${cfg.boardSize} 路`} · ${cfg.mode === 'teach' ? '教学摆棋' : '正常对弈'}。确认后重置当前棋局，房间链接不变。`;
+    document.getElementById('config-accept').hidden = proposal.by === myRole || !isPlayer;
+    document.getElementById('config-reject').disabled = !isPlayer;
+  }
+
 }
 
 // Click on intersection
-function handleIntersectionClick(r, c) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-  if (currentRoomState && currentRoomState.status === 'scoring') {
-    // Scoring dead stone toggle
-    sendAction({
-      type: 'toggle_dead',
-      r,
-      c
-    });
-    return;
+async function handleIntersectionClick(r, c) {
+  const state = currentRoomState;
+  if (!ws || ws.readyState !== WebSocket.OPEN || !state || !['black','white'].includes(myRole)) return;
+  if (renderedGameType === 'chess') {
+    if (state.status !== 'playing') return;
+    if (state.mode === 'teach' && chessSetupPiece !== 'move') {
+      sendAction({ type: 'teach_action', action: 'set_chess_piece', payload: { r, c, piece: chessSetupPiece } }); return;
+    }
+    const piece = state.board[r][c];
+    const own = piece && ((myRole === 'white' && piece === piece.toUpperCase()) || (myRole === 'black' && piece === piece.toLowerCase()));
+    if (!chessSelection || (state.mode === 'match' && own)) {
+      if (!piece || (state.mode === 'match' && !own)) return;
+      chessSelection = {r,c}; board.select(r,c); return;
+    }
+    const from = chessSelection;
+    chessSelection = null; board.clearSelection();
+    if (from.r === r && from.c === c) return;
+    const action = { type: 'move', r: from.r, c: from.c, toR:r, toC:c };
+    if (state.mode === 'match') {
+      const legal = state.chess.legalMoves.filter(m => m.from.r === from.r && m.from.c === from.c && m.to.r === r && m.to.c === c);
+      if (!legal.length) { showToast('这一步不合法，请选择提示的目标格'); return; }
+      if (legal.some(m => m.promotion)) { pendingPromotion = action; document.getElementById('promotion-modal').classList.add('active'); return; }
+    }
+    sendAction(action); return;
   }
-
-  // Play move
-  sendAction({
-    type: 'move',
-    r,
-    c
-  });
+  sendAction({ type: state.status === 'scoring' ? 'toggle_dead' : 'move', r, c });
 }
 
 // ==========================================================================
 // Setup Dialog & Event Listeners (Figure 1 Modal)
 // ==========================================================================
 
-function openSetupModal() {
-  document.querySelectorAll('.board-size-grid .size-toggle-btn').forEach(btn => btn.classList.toggle('active', Number(btn.dataset.size) === selectedSize));
-  const modal = document.getElementById('match-setup-modal');
-  modal.classList.add('active');
-  const url = `${window.location.protocol}//${window.location.host}/?room=${currentRoomId || 'ROOM'}`;
-  document.getElementById('invite-url-input').value = url;
+function refreshSetupUI() {
+  const chess = selectedGameType === 'chess';
+  document.getElementById('setup-title').textContent = setupNewRoom ? '创建房间' : '房间设置';
+  document.querySelector('.setup-intro > span:last-child').textContent = setupNewRoom ? '进入房间后，邀请好友共赴一局。' : '更换设置会重置棋局，房间链接与执子身份保留。';
+  document.getElementById('btn-submit-match').textContent = setupNewRoom ? '创建房间 · 开始一局' : '应用房间设置';
+  document.getElementById('go-options').hidden = chess;
+  document.getElementById('chess-options').hidden = !chess;
+  document.getElementById('color-options').hidden = !setupNewRoom || selectedMode === 'teach';
+  document.querySelectorAll('.go-only-option').forEach(el => el.hidden = chess);
+  document.querySelector('.stepper-row').classList.toggle('chess-settings',chess);
+  document.getElementById('time-control-select').disabled = selectedMode === 'teach';
+  for (const type of ['go','chess']) document.getElementById(`game-opt-${type}`).classList.toggle('active',type === selectedGameType);
+  for (const mode of ['match','teach']) document.getElementById(`mode-opt-${mode}`).classList.toggle('active',mode === selectedMode);
+  document.querySelectorAll('.board-size-grid .size-toggle-btn').forEach(btn => btn.classList.toggle('active',Number(btn.dataset.size) === selectedSize));
+  document.querySelectorAll('.color-chip').forEach(btn => btn.classList.toggle('active',btn.dataset.color === selectedColorPref));
+  document.getElementById('handicap-val').textContent = handicapVal;
+  document.getElementById('komi-val').textContent = komiVal;
 }
-
-function closeSetupModal() {
-  document.getElementById('match-setup-modal').classList.remove('active');
+function openSetupModal(newRoom = !currentRoomState) {
+  setupNewRoom = newRoom;
+  if (currentRoomState) {
+    selectedGameType = currentRoomState.gameType;
+    selectedMode = currentRoomState.mode;
+    selectedSize = currentRoomState.gameType === 'chess' ? 19 : currentRoomState.boardSize;
+    handicapVal = currentRoomState.handicap;
+    komiVal = currentRoomState.gameType === 'chess' ? 6.5 : currentRoomState.komi;
+    document.getElementById('time-control-select').value = currentRoomState.timeControl.type;
+  }
+  refreshSetupUI();
+  document.getElementById('match-setup-modal').classList.add('active');
 }
-
+function closeSetupModal() { document.getElementById('match-setup-modal').classList.remove('active'); }
 function setupModalEventListeners() {
-  document.getElementById('btn-open-settings').addEventListener('click', openSetupModal);
+  document.getElementById('btn-copy-link').disabled = !currentRoomId;
+  document.getElementById('btn-open-settings').addEventListener('click', () => openSetupModal(!currentRoomState));
+  document.getElementById('btn-create-another').addEventListener('click', () => openSetupModal(true));
   document.getElementById('btn-close-modal').addEventListener('click', closeSetupModal);
-
-  // Copy link in header & modal
-  const copyLinkAction = () => {
-    const url = `${window.location.protocol}//${window.location.host}/?room=${currentRoomId}`;
-    navigator.clipboard.writeText(url).then(() => {
-      showToast('📋 邀请链接已复制！发给好友即可加入对弈');
-    }).catch(() => {
-      prompt('请复制邀请链接：', url);
-    });
-  };
-
-  document.getElementById('btn-copy-link').addEventListener('click', copyLinkAction);
-  document.getElementById('btn-modal-copy').addEventListener('click', copyLinkAction);
-
-  // Mode buttons in modal
-  document.getElementById('mode-opt-match').addEventListener('click', () => {
-    selectedMode = 'match';
-    document.getElementById('mode-opt-match').classList.add('active');
-    document.getElementById('mode-opt-teach').classList.remove('active');
+  document.getElementById('btn-copy-link').addEventListener('click', async () => {
+    if (!currentRoomId) return;
+    const url = `${location.origin}/?room=${currentRoomId}`;
+    try { await navigator.clipboard.writeText(url); showToast('邀请链接已复制，发给好友即可加入'); }
+    catch { prompt('请复制邀请链接：',url); }
   });
-
-  document.getElementById('mode-opt-teach').addEventListener('click', () => {
-    selectedMode = 'teach';
-    document.getElementById('mode-opt-teach').classList.add('active');
-    document.getElementById('mode-opt-match').classList.remove('active');
+  for (const game of ['go','chess']) document.getElementById(`game-opt-${game}`).addEventListener('click', () => {
+    selectedGameType = game; selectedColorPref = game === 'chess' ? 'white' : 'black'; refreshSetupUI();
   });
-
-  // Board size in modal
-  document.querySelectorAll('.board-size-grid .size-toggle-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.board-size-grid .size-toggle-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedSize = Number(btn.dataset.size);
-    });
-  });
-
-  // Color selection in modal
-  document.querySelectorAll('.color-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.color-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      selectedColorPref = chip.dataset.color;
-    });
-  });
-
-  // Handicap stepper
-  document.getElementById('btn-handicap-minus').addEventListener('click', () => {
-    if (handicapVal > 0) {
-      handicapVal = handicapVal === 2 ? 0 : handicapVal - 1;
-      document.getElementById('handicap-val').textContent = handicapVal;
-    }
-  });
-  document.getElementById('btn-handicap-plus').addEventListener('click', () => {
-    if (handicapVal < 9) {
-      handicapVal = handicapVal === 0 ? 2 : handicapVal + 1;
-      document.getElementById('handicap-val').textContent = handicapVal;
-    }
-  });
-
-  // Komi stepper
-  document.getElementById('btn-komi-minus').addEventListener('click', () => {
-    komiVal = Math.max(0, komiVal - 1);
-    document.getElementById('komi-val').textContent = komiVal;
-  });
-  document.getElementById('btn-komi-plus').addEventListener('click', () => {
-    komiVal += 1;
-    document.getElementById('komi-val').textContent = komiVal;
-  });
-
-  // Submit modal (Create & Invite)
-  document.getElementById('btn-submit-match').addEventListener('click', () => {
+  for (const mode of ['match','teach']) document.getElementById(`mode-opt-${mode}`).addEventListener('click', () => { selectedMode = mode; refreshSetupUI(); });
+  document.querySelectorAll('.board-size-grid .size-toggle-btn').forEach(btn => btn.addEventListener('click', () => { selectedSize = Number(btn.dataset.size); handicapVal = Math.min(handicapVal, selectedSize === 19 ? 9 : 5); refreshSetupUI(); }));
+  document.querySelectorAll('.color-chip').forEach(btn => btn.addEventListener('click', () => { selectedColorPref = btn.dataset.color; refreshSetupUI(); }));
+  for (const [id, delta] of [['btn-handicap-minus',-1],['btn-handicap-plus',1]]) document.getElementById(id).addEventListener('click', () => { handicapVal = Math.max(0,Math.min(selectedSize === 19 ? 9 : 5, handicapVal + delta)); if (handicapVal === 1) handicapVal = delta > 0 ? 2 : 0; refreshSetupUI(); });
+  for (const [id, delta] of [['btn-komi-minus',-1],['btn-komi-plus',1]]) document.getElementById(id).addEventListener('click', () => { komiVal = Math.max(0,Math.min(100,komiVal + delta)); refreshSetupUI(); });
+  document.getElementById('btn-submit-match').addEventListener('click', async () => {
     if (creatingRoom) return;
-    if (sendAction({ type: 'create_room', playerName: localStorage.getItem('weiqi_player_name') || '房主', config: {
-      boardSize: selectedSize, mode: selectedMode, colorPref: selectedColorPref,
-      handicap: handicapVal, komi: komiVal, timeControl: document.getElementById('time-control-select').value
-    } })) {
-      creatingRoom = true;
-      document.getElementById('btn-submit-match').disabled = true;
+    if (currentRoomState && !await confirmAction(setupNewRoom ? '将离开当前房间并创建新房间，继续吗？' : '应用设置将重新开始棋局。正式对弈双方在线时需对手确认；房间链接保持不变。继续吗？')) return;
+    const config = { gameType:selectedGameType, boardSize:selectedSize, mode:selectedMode, colorPref:selectedColorPref,
+      handicap:handicapVal, komi:komiVal, timeControl:selectedMode === 'teach' ? 'none' : document.getElementById('time-control-select').value };
+    if (sendAction(setupNewRoom ? { type:'create_room', playerName:localStorage.getItem('weiqi_player_name') || '棋友', config } : { type:'configure_room', config })) {
+      creatingRoom = setupNewRoom; document.getElementById('btn-submit-match').disabled = true;
     }
   });
-
-  document.querySelectorAll('.board-size-switches .board-size-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const size = Number(btn.dataset.size);
-      if (!currentRoomState) { selectedSize = size; openSetupModal(); return; }
-      if (size === currentRoomState.boardSize) return;
-      if (currentRoomState.mode === 'teach' && currentRoomState.historyLength && !await confirmAction('切换棋盘将清空当前摆棋，继续吗？')) return;
-      sendAction({ type: 'change_board_size', boardSize: size });
-    });
-  });
-
-  // Audio Toggle
+  document.querySelectorAll('.board-size-switches .board-size-btn').forEach(btn => btn.addEventListener('click', async () => {
+    const size = Number(btn.dataset.size);
+    if (!currentRoomState) { selectedSize = size; openSetupModal(); return; }
+    if (size === currentRoomState.boardSize) return;
+    if (currentRoomState.mode === 'teach' && currentRoomState.historyLength && !await confirmAction('切换棋盘将清空当前摆棋，继续吗？')) return;
+    sendAction({ type:'change_board_size', boardSize:size });
+  }));
   document.getElementById('btn-audio-toggle').addEventListener('click', () => {
-    sound.enabled = !sound.enabled;
+    sound.enabled = !sound.enabled; localStorage.setItem('boardroom_sound',String(sound.enabled));
     document.getElementById('audio-icon').textContent = sound.enabled ? '🔊' : '🔇';
     showToast(sound.enabled ? '音效已开启' : '音效已静音');
   });
-  // Tabs in modal (邀请好友 vs 对弈设置)
-  const tabInvite = document.getElementById('tab-invite');
-  const tabSettings = document.getElementById('tab-settings');
-  const inviteSection = document.getElementById('invite-section');
-
-  tabInvite.addEventListener('click', () => {
-    tabInvite.classList.add('active');
-    tabSettings.classList.remove('active');
-    inviteSection.style.display = 'flex';
-  });
-
-  tabSettings.addEventListener('click', () => {
-    tabSettings.classList.add('active');
-    tabInvite.classList.remove('active');
-    inviteSection.style.display = 'none';
-  });
+  document.getElementById('btn-flip').addEventListener('click', () => board.flip?.());
+  for (const [id,accept] of [['config-accept',true],['config-reject',false]]) document.getElementById(id).addEventListener('click', () => sendAction({type:'respond_config',id:currentRoomState?.pendingConfig?.id,accept}));
+  document.getElementById('btn-draw').addEventListener('click', () => sendAction({type:'offer_draw'}));
+  document.querySelectorAll('[data-promotion]').forEach(btn => btn.addEventListener('click', () => {
+    if (pendingPromotion) sendAction({...pendingPromotion,promotion:btn.dataset.promotion});
+    pendingPromotion = null; document.getElementById('promotion-modal').classList.remove('active');
+  }));
+  document.getElementById('promotion-cancel').addEventListener('click', () => { pendingPromotion = null; document.getElementById('promotion-modal').classList.remove('active'); });
 }
 
 // ==========================================================================
@@ -610,6 +630,17 @@ function setupModalEventListeners() {
 // ==========================================================================
 
 function setupTeachPanelEventListeners() {
+  document.getElementById('chess-clear').addEventListener('click', async () => { if (await confirmAction('清空棋盘上的所有棋子？可以通过撤销恢复。')) sendAction({type:'teach_action',action:'clear_board'}); });
+  document.getElementById('chess-turn').addEventListener('change', e => sendAction({type:'teach_action',action:'set_turn',payload:{color:Number(e.target.value)}}));
+  document.querySelectorAll('.chess-palette-btn').forEach(btn => {
+    const piece=btn.dataset.piece;
+    if (!['move','0'].includes(piece)) { btn.innerHTML=pieceSVG(piece,'palette-'+piece); btn.setAttribute('aria-label', (piece === piece.toUpperCase() ? '白' : '黑')+({p:'兵',n:'马',b:'象',r:'车',q:'后',k:'王'}[piece.toLowerCase()])); }
+  });
+  document.querySelectorAll('.chess-palette-btn').forEach(btn => btn.addEventListener('click', () => {
+    chessSetupPiece = btn.dataset.piece === '0' ? 0 : btn.dataset.piece;
+    chessSelection = null; board.clearSelection?.();
+    document.querySelectorAll('.chess-palette-btn').forEach(b => b.classList.toggle('active', b === btn));
+  }));
   // Placement Mode Radios (只下黑子, 只下白子, 正常交替)
   document.querySelectorAll('input[name="teach-color"]').forEach(input => {
     input.addEventListener('change', () => {
@@ -763,6 +794,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('confirmation-cancel').addEventListener('click', () => finishConfirmation(false));
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && pendingConfirmation) finishConfirmation(false); });
   setInterval(() => { if (statsReceivedAt && Date.now() - statsReceivedAt > 12000) markStatsStale(); }, 1000);
+  document.getElementById('audio-icon').textContent = sound.enabled ? '🔊' : '🔇';
   initBoard(19);
   setupModalEventListeners();
   setupTeachPanelEventListeners();

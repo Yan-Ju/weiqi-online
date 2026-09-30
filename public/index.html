@@ -2,8 +2,8 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>围棋在线 - 随时随地下围棋 · 对战与教学摆棋</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>棋局在线 · 围棋与国际象棋</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -15,21 +15,22 @@
         <span class="b-dot">●</span>
         <span class="w-dot">○</span>
       </div>
-      <span class="brand-title">围棋在线</span>
+      <span class="brand-title" id="brand-title">棋局在线</span>
       <span id="app-mode-badge" class="mode-badge match">⚔️ 对战模式</span>
     </div>
 
     <div class="header-actions">
-      <div id="room-tag" class="room-tag">
+      <div id="room-tag" class="room-tag" hidden>
         <span>房间: <strong id="room-id-display">------</strong></span>
         <span id="role-display" style="color: var(--primary-teal);">(观战)</span>
       </div>
-      <button id="btn-copy-link" class="btn-header primary" title="复制好友邀请链接">
+      <button id="btn-copy-link" class="btn-header primary" hidden title="复制好友邀请链接">
         <span>🔗 邀请好友</span>
       </button>
-      <button id="btn-open-settings" class="btn-header" title="创建新对局设置">
-        <span>⚙️ 新开局</span>
+      <button id="btn-open-settings" class="btn-header" hidden title="更换游戏或对局方式">
+        <span>房间设置</span>
       </button>
+      <button id="btn-create-another" class="btn-header">创建房间</button>
       <button id="btn-audio-toggle" class="btn-header" title="落子音效开关">
         <span id="audio-icon">🔊</span>
       </button>
@@ -45,8 +46,8 @@
       <div><dt>待清理空房间</dt><dd id="server-empty">—</dd></div>
       <div><dt>在线连接</dt><dd id="server-connections">—</dd></div>
     </dl>
-    <p>全站围棋服务 · 每 5 秒更新<br>连接数包含多个标签页</p>
-    <details><summary>指标说明</summary><p>CPU 为围棋进程最近 5 秒用量，100% 表示占用一个 CPU 核心，可能超过 100%。不是 Render 套餐配额使用率。内存为进程实际驻留内存。</p></details>
+    <p>全站棋局服务 · 每 5 秒更新<br>连接数包含多个标签页</p>
+    <details><summary>指标说明</summary><p>CPU 为服务进程最近 5 秒用量，100% 表示占用一个 CPU 核心，可能超过 100%。不是 Render 套餐配额使用率。内存为进程实际驻留内存。</p></details>
   </aside>
 
   <aside id="estimate-panel" class="estimate-panel" aria-label="形势判断" hidden>
@@ -71,7 +72,7 @@
     <!-- Board Header Row -->
     <div class="board-header-row">
       <div class="board-title-group">
-        <h2 id="board-title">9 × 9 棋盘</h2>
+        <span class="stage-eyebrow">THE BOARDROOM · 棋间</span><h2 id="board-title">9 × 9 棋盘</h2>
         <p id="board-subtitle">点击交叉点落子，黑白双方轮流进行。</p>
       </div>
 
@@ -83,6 +84,10 @@
       </div>
     </div>
 
+    <div id="config-proposal" class="config-proposal" hidden>
+      <span id="config-proposal-text"></span><div><button id="config-accept" class="btn-teach primary">同意更换</button><button id="config-reject" class="btn-teach">取消申请</button></div>
+    </div>
+    <div class="player-strip"><div><i class="player-dot black"></i><span id="player-black">黑方 · 等待入座</span></div><span class="table-label">一局之间 · 与友相逢</span><div><i class="player-dot white"></i><span id="player-white">白方 · 等待入座</span></div></div>
     <!-- Go Board SVG Wrapper -->
     <div class="board-wrapper">
       <div id="board-container" class="board-container">
@@ -90,6 +95,7 @@
       </div>
     </div>
 
+    <div class="board-extra"><span id="board-material">榧木色棋盘 / 黑玉与白贝</span><button id="btn-flip" class="btn-header" hidden>翻转棋盘</button></div>
     <!-- Info Bar below Board (Figure 2) -->
     <div class="board-info-bar">
       <div class="turn-indicator">
@@ -125,6 +131,26 @@
 
     <!-- FIGURE 2: Teaching Mode Controls (Blue Dashed Box) -->
     <section id="teach-mode-panel" class="teach-mode-panel" style="display: none;">
+      <div id="chess-setup-tools" class="chess-setup-tools" hidden>
+        <span class="teach-label">摆棋棋子</span>
+        <div class="chess-palette">
+          <button type="button" class="chess-palette-btn active" data-piece="move">移动</button>
+          <button type="button" class="chess-palette-btn" data-piece="P">♙</button>
+          <button type="button" class="chess-palette-btn" data-piece="K">♔</button>
+          <button type="button" class="chess-palette-btn" data-piece="Q">♕</button>
+          <button type="button" class="chess-palette-btn" data-piece="R">♖</button>
+          <button type="button" class="chess-palette-btn" data-piece="B">♗</button>
+          <button type="button" class="chess-palette-btn" data-piece="N">♘</button>
+          <button type="button" class="chess-palette-btn" data-piece="p">♟</button>
+          <button type="button" class="chess-palette-btn" data-piece="k">♚</button>
+          <button type="button" class="chess-palette-btn" data-piece="q">♛</button>
+          <button type="button" class="chess-palette-btn" data-piece="r">♜</button>
+          <button type="button" class="chess-palette-btn" data-piece="b">♝</button>
+          <button type="button" class="chess-palette-btn" data-piece="n">♞</button>
+          <button type="button" class="chess-palette-btn" data-piece="0">⌫</button>
+        </div>
+        <div class="chess-edit-actions"><button id="chess-clear" class="btn-teach">清空棋盘</button><label>行棋方 <select id="chess-turn"><option value="2">白方</option><option value="1">黑方</option></select></label><span>自由摆放，不检查合法性</span></div>
+      </div>
       <!-- Row 1: 摆棋模式 -->
       <div class="teach-row-mode">
         <span class="teach-label">摆棋模式</span>
@@ -170,14 +196,16 @@
     <section id="match-mode-panel" class="match-mode-panel">
       <div class="match-action-group">
         <button id="btn-match-pass" class="btn-teach primary">停着</button>
+        <button id="btn-draw" class="btn-teach" hidden>提议和棋</button>
         <button id="btn-match-score" class="btn-teach">终局点目</button>
         <button id="btn-match-resign" class="btn-teach" style="color: #dc2626;">认输</button>
       </div>
-      <div style="font-size: 13px; color: var(--text-muted);">
+      <div id="match-hint" style="font-size: 13px; color: var(--text-muted);">
         双方连续停着或点击“终局点目”将进入胜负判定
       </div>
     </section>
 
+    <section id="chess-moves-panel" class="chess-moves-panel" hidden><span class="section-caption">对局记录</span><div id="chess-moves">等待第一步</div></section>
     <section class="match-mode-panel" aria-label="对局操作">
       <button id="btn-estimate" class="btn-teach" disabled>形势估算</button>
       <button id="btn-new-game" class="btn-teach" disabled>开始新一局</button>
@@ -190,17 +218,21 @@
        FIGURE 1: Match Setup Dialog ("与好友对局" 弹窗)
        ========================================================================== -->
   <div id="match-setup-modal" class="modal-backdrop">
-    <div class="match-modal-card">
+    <div class="match-modal-card" role="dialog" aria-modal="true" aria-labelledby="setup-title">
       <div class="modal-header">
-        <h3>与好友对局</h3>
+        <h3 id="setup-title">创建房间</h3>
         <button id="btn-close-modal" class="modal-close-btn">✕</button>
       </div>
 
       <div class="modal-body">
-        <!-- Top Tabs (邀请好友 / 对弈) -->
-        <div class="modal-tabs">
-          <button id="tab-invite" class="modal-tab-btn active">邀请好友</button>
-          <button id="tab-settings" class="modal-tab-btn">对弈设置</button>
+        <div class="setup-intro"><span class="setup-kicker">ROOM LOUNGE</span><strong>选择游戏与对局方式</strong><span>创建后即可复制专属房间链接邀请好友</span></div>
+
+        <div class="form-item">
+          <label class="form-label">游戏类型</label>
+          <div class="game-type-grid">
+            <button id="game-opt-go" class="size-toggle-btn active" type="button">◉ 围棋</button>
+            <button id="game-opt-chess" class="size-toggle-btn" type="button">♞ 国际象棋</button>
+          </div>
         </div>
 
         <!-- Mode selection (对战 vs 教学) -->
@@ -212,18 +244,8 @@
           </div>
         </div>
 
-        <!-- Invite Link section -->
-        <div id="invite-section" class="form-item">
-          <label class="form-label">选择要邀请的好友</label>
-          <div class="invite-link-row">
-            <input type="text" id="invite-url-input" class="invite-input" readonly value="获取中...">
-            <button id="btn-modal-copy" class="btn-copy-invite" type="button">复制链接</button>
-          </div>
-          <span style="font-size: 12px; color: #9ca3af;">发给朋友，点击链接即可随时随地在手机或电脑加入对局！</span>
-        </div>
-
         <!-- Board size toggle (9x9, 13x13, 19x19) -->
-        <div class="form-item">
+        <div id="go-options" class="form-item">
           <label class="form-label">棋盘路数</label>
           <div class="board-size-grid">
             <button class="size-toggle-btn" data-size="9" type="button">9×9</button>
@@ -232,26 +254,31 @@
           </div>
         </div>
 
+        <div id="chess-options" class="form-item" hidden>
+          <label class="form-label">棋盘</label>
+          <div class="chess-option-note">标准 8×8 · 白方先行 · 完整走子规则</div>
+        </div>
+
         <!-- Color preference (黑, 随机, 白) -->
-        <div class="form-item">
+        <div id="color-options" class="form-item">
           <label class="form-label">执子选择</label>
           <div class="color-radio-grid">
-            <div class="color-chip active" data-color="black">
+            <button type="button" class="color-chip active" data-color="black">
               <span>● 黑</span>
-            </div>
-            <div class="color-chip" data-color="random">
+            </button>
+            <button type="button" class="color-chip" data-color="random">
               <span>◑ 随机</span>
-            </div>
-            <div class="color-chip" data-color="white">
+            </button>
+            <button type="button" class="color-chip" data-color="white">
               <span>○ 白</span>
-            </div>
+            </button>
           </div>
         </div>
 
         <!-- Steppers: 让子, 贴目, 时间 -->
         <div class="stepper-row">
           <!-- 让子 -->
-          <div class="stepper-item">
+          <div class="stepper-item go-only-option">
             <label class="form-label">让子</label>
             <div class="stepper-control">
               <button id="btn-handicap-minus" class="step-btn" type="button">−</button>
@@ -261,7 +288,7 @@
           </div>
 
           <!-- 贴目 -->
-          <div class="stepper-item">
+          <div class="stepper-item go-only-option">
             <label class="form-label">贴目</label>
             <div class="stepper-control">
               <button id="btn-komi-minus" class="step-btn" type="button">−</button>
@@ -278,14 +305,14 @@
               <option value="1m10s">1分钟 + 10秒</option>
               <option value="1m20s">1分钟 + 20秒</option>
               <option value="15m20s">15分钟 + 20秒</option>
-              <option value="custom">自定义 (5分+10秒)</option>
+
             </select>
           </div>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button id="btn-submit-match" class="btn-modal-action" type="button">发送邀请 / 开始对弈</button>
+        <button id="btn-submit-match" class="btn-modal-action" type="button">创建房间</button>
       </div>
     </div>
   </div>
@@ -360,6 +387,9 @@
     </div>
   </div>
 
+  <div id="promotion-modal" class="modal-backdrop">
+    <section class="scoring-modal-card" role="dialog" aria-modal="true" aria-labelledby="promotion-title"><h3 id="promotion-title">兵的升变</h3><p>选择要升变的棋子</p><div class="promotion-options"><button data-promotion="q">后</button><button data-promotion="r">车</button><button data-promotion="b">象</button><button data-promotion="n">马</button><button id="promotion-cancel">取消</button></div></section>
+  </div>
   <!-- Floating Toast Notification -->
   <div id="app-toast" class="toast-container">
     提示信息

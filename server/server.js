@@ -25,7 +25,7 @@ function updateServerStats() {
 app.use(express.json({ limit: '8kb' }));
 app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 app.get('/room/:roomId', (_req, res) => res.sendFile(fileURLToPath(new URL('../public/index.html', import.meta.url))));
-app.get('/health', (_req, res) => res.json({ status: 'ok', version: '1.3.1' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', version: '2.0.0' }));
 
 app.get('/api/server-stats', (_req, res) => { res.set('Cache-Control', 'no-store'); res.json(serverStats); });
 
@@ -40,7 +40,7 @@ app.post('/api/create-room', (req, res) => {
   if (++rate.count > 60) return res.status(429).json({ success: false, reason: '创建过于频繁，请稍后再试' });
   try {
     const room = rooms.createRoom(req.body);
-    res.json({ success: true, roomId: room.roomId, mode: room.mode, boardSize: room.boardSize });
+    res.json({ success: true, roomId: room.roomId, mode: room.mode, gameType: room.gameType, boardSize: room.boardSize });
   } catch (err) { res.status(400).json({ success: false, reason: err.message }); }
 });
 app.get('/api/room/:roomId', (req, res) => {
@@ -98,11 +98,12 @@ wss.on('connection', ws => {
       if (msg.type === 'request_estimate') {
         const room = rooms.getRoom(ws.roomId);
         if (!room) throw new Error('房间已关闭');
+        if (room.gameType === 'chess') throw new Error('形势估算仅适用于围棋');
         send(ws, { type: 'position_estimate', result: room.game.estimatePosition() });
         return;
       }
       const operations = {
-        move: () => rooms.handleMove(ws, msg.r, msg.c),
+        move: () => rooms.handleMove(ws, msg.r, msg.c, msg.toR, msg.toC, msg.promotion),
         pass: () => rooms.handlePass(ws),
         resign: () => rooms.handleResign(ws),
         teach_action: () => rooms.handleTeachAction(ws, msg.action, msg.payload),
@@ -111,7 +112,10 @@ wss.on('connection', ws => {
         confirm_scoring: () => rooms.confirmScoring(ws),
         resume_game: () => rooms.resumeGame(ws),
         new_game: () => rooms.newGame(ws),
-        change_board_size: () => rooms.changeBoardSize(ws, msg.boardSize)
+        change_board_size: () => rooms.changeBoardSize(ws, msg.boardSize),
+        configure_room: () => rooms.configureRoom(ws, msg.config),
+        respond_config: () => rooms.respondConfig(ws, msg.id, msg.accept === true),
+        offer_draw: () => rooms.offerDraw(ws)
       };
       const events = { move: 'move_played', pass: 'pass_played', resign: 'game_resigned', request_scoring: 'scoring_started', toggle_dead: 'dead_toggled', confirm_scoring: 'scoring_confirmed' };
       if (Object.hasOwn(operations, msg.type)) {
