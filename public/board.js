@@ -106,6 +106,10 @@ export class GoBoardSVG {
         <stop offset="0%" stop-color="#ffffff" stop-opacity="0.75" />
         <stop offset="100%" stop-color="#d8d1c3" stop-opacity="0.75" />
       </radialGradient>
+
+      <marker id="annotationArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L8,4 L0,8 z" fill="context-stroke" />
+      </marker>
     `;
     svg.appendChild(defs);
 
@@ -437,29 +441,43 @@ export class GoBoardSVG {
       }
     }
 
-    // Teaching annotations (triangle, square, cross, circle)
+    // Teaching annotations: point marks plus lines and arrows.
     for (const [key, item] of Object.entries(this.annotations)) {
+      const color = item.color || '#1e293b';
+      if ((item.type === 'line' || item.type === 'arrow') && item.from && item.to) {
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', this.padding + item.from.c * this.cellSize);
+        line.setAttribute('y1', this.padding + item.from.r * this.cellSize);
+        line.setAttribute('x2', this.padding + item.to.c * this.cellSize);
+        line.setAttribute('y2', this.padding + item.to.r * this.cellSize);
+        line.setAttribute('stroke', color);
+        line.setAttribute('stroke-width', Math.max(3, this.cellSize * 0.07));
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('opacity', '0.9');
+        if (item.type === 'arrow') {
+          line.setAttribute('marker-end', 'url(#annotationArrow)');
+          line.style.setProperty('--annotation-arrow-color', color);
+        }
+        this.markersLayer.appendChild(line);
+        continue;
+      }
       const [r, c] = key.split(',').map(Number);
+      if (!Number.isInteger(r) || !Number.isInteger(c) || !this.board[r]) continue;
       const cx = this.padding + c * this.cellSize;
       const cy = this.padding + r * this.cellSize;
-      const onStone = this.board[r][c] !== 0;
-      const strokeColor = onStone && this.board[r][c] === 1 ? '#00e5ff' : '#007aff';
-
       const markText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       markText.setAttribute('x', cx);
       markText.setAttribute('y', cy);
-      markText.setAttribute('fill', strokeColor);
-      markText.setAttribute('font-size', this.stoneRadius * 1.1);
+      markText.setAttribute('fill', color);
+      markText.setAttribute('font-size', this.stoneRadius * (['number', 'letter'].includes(item.type) ? 0.9 : 1.1));
       markText.setAttribute('font-weight', 'bold');
       markText.setAttribute('text-anchor', 'middle');
       markText.setAttribute('dominant-baseline', 'central');
-
       if (item.type === 'triangle') markText.textContent = '▲';
       else if (item.type === 'square') markText.textContent = '■';
       else if (item.type === 'cross') markText.textContent = '✕';
       else if (item.type === 'circle') markText.textContent = '●';
       else markText.textContent = item.text || '●';
-
       this.markersLayer.appendChild(markText);
     }
   }

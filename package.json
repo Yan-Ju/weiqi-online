@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server/server.js",
-    "test": "node test_rules.js && node --test test_regressions.js test_network.js test_stats.js test_estimator.js test_chess.js"
+    "test": "node test_rules.js && node --test test_regressions.js test_network.js test_stats.js test_estimator.js test_chess.js test_markups_time.js"
   },
   "dependencies": {
     "chess.js": "^1.4.0",

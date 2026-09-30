@@ -8,8 +8,10 @@ const SHAPES = {
   k: '<path d="M47 10h6v7h8v6h-8v8h-6v-8h-8v-6h8z"/><path d="M50 32c-20-17-34 3-21 15l9 10h24l9-10c13-12-1-32-21-15z"/><path d="M38 57h24l-5 8 9 8H34l9-8zM31 73h38l4 8H27z"/>'
 };
 export function pieceSVG(piece, id) {
-  const white = piece === piece.toUpperCase(), base = white ? '#f7f0dc' : '#353c40', dark = white ? '#bbaa85' : '#11191d', light = white ? '#fffdf5' : '#68747a';
-  return `<svg viewBox="0 0 100 100" class="chess-piece" aria-hidden="true"><defs><linearGradient id="piece-${id}" x1="0" x2="1"><stop offset="0" stop-color="${dark}"/><stop offset=".3" stop-color="${light}"/><stop offset=".56" stop-color="${base}"/><stop offset="1" stop-color="${dark}"/></linearGradient></defs><ellipse cx="51" cy="85" rx="27" ry="6" fill="#19110c" opacity=".22"/><g fill="url(#piece-${id})" stroke="${white ? '#806e51' : '#10191e'}" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" color="${white ? '#765e42' : '#d1bc91'}">${SHAPES[piece.toLowerCase()]}<path d="M29 81h42l3 5H26z"/></g><path d="M33 83h34" stroke="${white ? '#fffaf0' : '#8a979c'}" opacity=".55"/></svg>`;
+  const white = piece === piece.toUpperCase();
+  const fill = white ? '#f4f4f1' : '#687078';
+  const stroke = white ? '#8b9294' : '#3d444a';
+  return `<svg viewBox="0 0 100 100" class="chess-piece" aria-hidden="true"><ellipse cx="51" cy="85" rx="27" ry="5" fill="#263238" opacity=".18"/><g fill="${fill}" stroke="${stroke}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round">${SHAPES[piece.toLowerCase()]}<path d="M29 81h42l3 5H26z"/></g></svg>`;
 }
 export class ChessBoard {
   constructor(containerId, { onIntersectionClick } = {}) {

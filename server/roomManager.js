@@ -30,13 +30,13 @@ export class RoomManager {
     const handicap = Math.min(boardSize === 19 ? 9 : 5, Math.max(0, Math.trunc(Number(config.handicap) || 0)));
     const komi = Number.isFinite(Number(config.komi)) ? Math.min(100, Math.max(0, Number(config.komi))) : 6.5;
 
-    // Time controls: { type: 'none'|'1m10s'|'1m20s'|'15m20s'|'custom', mainTime: seconds, increment: seconds }
+    // Time controls use a compact type plus optional custom values in seconds.
     let mainTime = 0;
     let increment = 0;
-    if (config.timeControl === '1m10s') { mainTime = 60; increment = 10; }
-    else if (config.timeControl === '1m20s') { mainTime = 60; increment = 20; }
-    else if (config.timeControl === '15m20s') { mainTime = 900; increment = 20; }
-    else if (config.timeControl === 'custom') {
+    const presets = { '30s': [30, 0], '1m': [60, 0], '3m2s': [180, 2], '5m5s': [300, 5], '10m5s': [600, 5], '15m10s': [900, 10], '30m': [1800, 0], '60m': [3600, 0], '1m10s': [60, 10], '1m20s': [60, 20], '15m20s': [900, 20] };
+    const requestedTimeControl = mode === 'teach' ? 'none' : config.timeControl;
+    if (presets[requestedTimeControl]) [mainTime, increment] = presets[requestedTimeControl];
+    else if (requestedTimeControl === 'custom') {
       mainTime = Math.min(86400, Math.max(1, Number(config.customMainTime) || 300));
       increment = Math.min(600, Math.max(0, Number(config.customIncrement ?? 10) || 0));
     }
@@ -52,7 +52,7 @@ export class RoomManager {
       handicap,
       komi,
       timeControl: {
-        type: config.timeControl || 'none',
+        type: requestedTimeControl || 'none',
         mainTime,
         increment
       },
@@ -254,7 +254,9 @@ export class RoomManager {
       boardSize: config.gameType === 'chess' ? 8 : ([9,13,19].includes(config.boardSize) ? config.boardSize : 19),
       handicap: config.gameType === 'chess' ? 0 : Math.max(0, Math.min(9, Math.trunc(Number(config.handicap) || 0))),
       komi: config.gameType === 'chess' ? 0 : Math.max(0, Math.min(100, Number(config.komi) || 0)),
-      timeControl: ['none','1m10s','1m20s','15m20s'].includes(config.timeControl) ? config.timeControl : 'none'
+      timeControl: config.mode === 'teach' ? 'none' : (['30s','1m','3m2s','5m5s','10m5s','15m10s','30m','60m','1m10s','1m20s','15m20s','custom','none'].includes(config.timeControl) ? config.timeControl : 'none'),
+      customMainTime: Math.min(86400, Math.max(1, Number(config.customMainTime) || 300)),
+      customIncrement: Math.min(600, Math.max(0, Number(config.customIncrement) || 0))
     };
     if (room.mode === 'match' && (room.players.black && room.players.white || room.game.history.length)) {
       if (!room.players.black || !room.players.white) return { success: false, reason: '请等待对手回到房间后确认更换' };
@@ -267,9 +269,11 @@ export class RoomManager {
 
   applyConfig(room, config) {
     Object.assign(room, { gameType: config.gameType, mode: config.mode, boardSize: config.boardSize, handicap: config.handicap, komi: config.komi });
-    const times = { none: [0,0], '1m10s': [60,10], '1m20s': [60,20], '15m20s': [900,20] };
-    const [mainTime, increment] = times[config.timeControl];
-    room.timeControl = { type: config.timeControl, mainTime, increment };
+    const times = { none: [0,0], '30s': [30,0], '1m': [60,0], '3m2s': [180,2], '5m5s': [300,5], '10m5s': [600,5], '15m10s': [900,10], '30m': [1800,0], '60m': [3600,0], '1m10s': [60,10], '1m20s': [60,20], '15m20s': [900,20] };
+    const [mainTime, increment] = config.timeControl === 'custom'
+      ? [Math.min(86400, Math.max(1, Number(config.customMainTime) || 300)), Math.min(600, Math.max(0, Number(config.customIncrement) || 0))]
+      : (times[config.timeControl] || times.none);
+    room.timeControl = { type: config.mode === 'teach' ? 'none' : config.timeControl, mainTime: config.mode === 'teach' ? 0 : mainTime, increment: config.mode === 'teach' ? 0 : increment };
     room.clocks.increment = increment;
     this.resetGame(room);
   }
@@ -478,16 +482,50 @@ export class RoomManager {
     } else if (action === 'jump_to_step') {
       const ok = room.game.jumpToStep(Number(payload.step));
       return { success: ok };
-    } else if (action === 'toggle_annotation') {
-      const { r, c, type, text } = payload;
-      if (!room.game.isValidCoord(r, c) || !['circle', 'triangle', 'square', 'cross', 'text'].includes(type)) return { success: false };
-      const key = `${r},${c}`;
-      if (room.teachState.annotations[key] && room.teachState.annotations[key].type === type) {
-        delete room.teachState.annotations[key];
-      } else {
-        room.teachState.annotations[key] = { type, text };
-      }
+    } else if (action === 'clear_annotations') {
+      room.teachState.annotations = {};
       return { success: true, annotations: room.teachState.annotations };
+    } else if (['toggle_annotation', 'markup', 'add_annotation'].includes(action)) {
+      const { r, c, type, text, color = '#1e293b', toR, toC } = payload;
+      const pointTypes = ['circle', 'triangle', 'square', 'cross', 'text', 'number', 'letter'];
+      const lineTypes = ['line', 'arrow'];
+      const validColor = ['#1e293b', '#dc2626', '#2563eb', '#16a34a'].includes(color) ? color : '#1e293b';
+      if (!pointTypes.includes(type) && !lineTypes.includes(type) && type !== 'eraser' && type !== 'clear') return { success: false, reason: '标记类型无效' };
+      const annotations = room.teachState.annotations;
+      if (type === 'clear') {
+        room.teachState.annotations = {};
+        return { success: true, annotations: room.teachState.annotations };
+      }
+      if (!room.game.isValidCoord(r, c)) return { success: false, reason: '标记坐标无效' };
+      const key = `${r},${c}`;
+      if (type === 'eraser') {
+        delete annotations[key];
+        for (const [annotationKey, item] of Object.entries(annotations)) {
+          if (item.type === 'line' || item.type === 'arrow') {
+            if ((item.from?.r === r && item.from?.c === c) || (item.to?.r === r && item.to?.c === c)) delete annotations[annotationKey];
+          }
+        }
+        return { success: true, annotations };
+      }
+      if (lineTypes.includes(type)) {
+        if (!room.game.isValidCoord(toR, toC) || (toR === r && toC === c)) return { success: false, reason: '线段终点无效' };
+        const lineKey = `${type}:${r},${c}-${toR},${toC}`;
+        annotations[lineKey] = { type, color: validColor, from: { r, c }, to: { r: toR, c: toC } };
+        return { success: true, annotations };
+      }
+      let nextText = text;
+      if (type === 'number') {
+        const used = new Set(Object.values(annotations).filter(item => item.type === 'number').map(item => Number(item.text)).filter(Number.isFinite));
+        let n = 1; while (used.has(n)) n++;
+        nextText = String(n);
+      } else if (type === 'letter') {
+        const used = new Set(Object.values(annotations).filter(item => item.type === 'letter').map(item => String(item.text)));
+        let n = 0; while (used.has(String.fromCharCode(65 + n))) n++;
+        nextText = String.fromCharCode(65 + (n % 26));
+      }
+      if (annotations[key] && annotations[key].type === type && !['number', 'letter'].includes(type)) delete annotations[key];
+      else annotations[key] = { type, text: nextText, color: validColor };
+      return { success: true, annotations };
     }
 
     return { success: false };

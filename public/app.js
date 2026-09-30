@@ -24,6 +24,9 @@ let reconnectAttempts = 0;
 let scoringPanelHidden = false;
 let estimatePreview = false;
 let estimateEnabled = false, estimateResult = null, estimateKey = '', estimateWorker = null, estimateTimer = null, estimateTimeout = null;
+let selectedTeachTool = 'move';
+let markupStart = null;
+let annotationColor = '#1e293b';
 function stopEstimateJob() {
   clearTimeout(estimateTimer); clearTimeout(estimateTimeout);
   estimateWorker?.terminate(); estimateWorker = null;
@@ -348,6 +351,7 @@ function applyRoomState(state) {
   }
 
   document.getElementById('chess-setup-tools').hidden = renderedGameType !== 'chess' || state.mode !== 'teach';
+  document.getElementById('go-markup-tools').hidden = renderedGameType !== 'go' || state.mode !== 'teach';
   document.querySelector('.teach-row-mode').hidden = renderedGameType === 'chess';
 
   // Board visual state update
@@ -481,7 +485,7 @@ function applyRoomState(state) {
   document.getElementById('btn-open-settings').disabled = !isPlayer;
   document.getElementById('player-black').textContent = `黑方 · ${state.players.black?.name || '等待入座'}`;
   document.getElementById('player-white').textContent = `白方 · ${state.players.white?.name || '等待入座'}`;
-  document.getElementById('board-material').textContent = chess ? '胡桃木与枫木 / 立体雕刻棋子' : '榧木色棋盘 / 黑玉与白贝';
+  document.getElementById('board-material').textContent = chess ? '橄榄绿与米白 / 扁平灰阶棋子' : '榧木色棋盘 / 黑玉与白贝';
   document.getElementById('btn-flip').hidden = !chess;
   document.querySelector('.board-size-switches').hidden = chess;
   for (const id of ['btn-estimate','btn-match-pass','btn-match-score','btn-teach-pass','btn-teach-scoring','btn-toggle-numbers']) document.getElementById(id).hidden = chess;
@@ -536,6 +540,27 @@ async function handleIntersectionClick(r, c) {
     }
     sendAction(action); return;
   }
+  if (state.mode === 'teach') {
+    if (selectedTeachTool === 'clear') {
+      sendAction({ type: 'teach_action', action: 'markup', payload: { type: 'clear' } });
+      markupStart = null;
+      return;
+    }
+    if (selectedTeachTool === 'line' || selectedTeachTool === 'arrow') {
+      if (!markupStart) {
+        markupStart = { r, c };
+        showToast('请选择终点');
+      } else {
+        sendAction({ type: 'teach_action', action: 'markup', payload: { type: selectedTeachTool, r: markupStart.r, c: markupStart.c, toR: r, toC: c, color: annotationColor } });
+        markupStart = null;
+      }
+      return;
+    }
+    if (selectedTeachTool !== 'move') {
+      sendAction({ type: 'teach_action', action: 'markup', payload: { type: selectedTeachTool, r, c, color: annotationColor } });
+      return;
+    }
+  }
   sendAction({ type: state.status === 'scoring' ? 'toggle_dead' : 'move', r, c });
 }
 
@@ -554,12 +579,24 @@ function refreshSetupUI() {
   document.querySelectorAll('.go-only-option').forEach(el => el.hidden = chess);
   document.querySelector('.stepper-row').classList.toggle('chess-settings',chess);
   document.getElementById('time-control-select').disabled = selectedMode === 'teach';
+  refreshTimeControlUI();
   for (const type of ['go','chess']) document.getElementById(`game-opt-${type}`).classList.toggle('active',type === selectedGameType);
   for (const mode of ['match','teach']) document.getElementById(`mode-opt-${mode}`).classList.toggle('active',mode === selectedMode);
   document.querySelectorAll('.board-size-grid .size-toggle-btn').forEach(btn => btn.classList.toggle('active',Number(btn.dataset.size) === selectedSize));
   document.querySelectorAll('.color-chip').forEach(btn => btn.classList.toggle('active',btn.dataset.color === selectedColorPref));
   document.getElementById('handicap-val').textContent = handicapVal;
   document.getElementById('komi-val').textContent = komiVal;
+}
+function refreshTimeControlUI() {
+  const select = document.getElementById('time-control-select');
+  const fields = document.getElementById('time-custom-fields');
+  if (!select || !fields) return;
+  if (selectedMode === 'teach') {
+    select.value = 'none';
+    fields.hidden = true;
+  } else {
+    fields.hidden = select.value !== 'custom';
+  }
 }
 function openSetupModal(newRoom = !currentRoomState) {
   setupNewRoom = newRoom;
@@ -570,6 +607,8 @@ function openSetupModal(newRoom = !currentRoomState) {
     handicapVal = currentRoomState.handicap;
     komiVal = currentRoomState.gameType === 'chess' ? 6.5 : currentRoomState.komi;
     document.getElementById('time-control-select').value = currentRoomState.timeControl.type;
+    document.getElementById('custom-main-minutes').value = Math.max(1, Math.round((currentRoomState.timeControl.mainTime || 300) / 60));
+    document.getElementById('custom-increment-seconds').value = currentRoomState.timeControl.increment || 0;
   }
   refreshSetupUI();
   document.getElementById('match-setup-modal').classList.add('active');
@@ -590,6 +629,7 @@ function setupModalEventListeners() {
     selectedGameType = game; selectedColorPref = game === 'chess' ? 'white' : 'black'; refreshSetupUI();
   });
   for (const mode of ['match','teach']) document.getElementById(`mode-opt-${mode}`).addEventListener('click', () => { selectedMode = mode; refreshSetupUI(); });
+  document.getElementById('time-control-select').addEventListener('change', refreshTimeControlUI);
   document.querySelectorAll('.board-size-grid .size-toggle-btn').forEach(btn => btn.addEventListener('click', () => { selectedSize = Number(btn.dataset.size); handicapVal = Math.min(handicapVal, selectedSize === 19 ? 9 : 5); refreshSetupUI(); }));
   document.querySelectorAll('.color-chip').forEach(btn => btn.addEventListener('click', () => { selectedColorPref = btn.dataset.color; refreshSetupUI(); }));
   for (const [id, delta] of [['btn-handicap-minus',-1],['btn-handicap-plus',1]]) document.getElementById(id).addEventListener('click', () => { handicapVal = Math.max(0,Math.min(selectedSize === 19 ? 9 : 5, handicapVal + delta)); if (handicapVal === 1) handicapVal = delta > 0 ? 2 : 0; refreshSetupUI(); });
@@ -597,8 +637,11 @@ function setupModalEventListeners() {
   document.getElementById('btn-submit-match').addEventListener('click', async () => {
     if (creatingRoom) return;
     if (currentRoomState && !await confirmAction(setupNewRoom ? '将离开当前房间并创建新房间，继续吗？' : '应用设置将重新开始棋局。正式对弈双方在线时需对手确认；房间链接保持不变。继续吗？')) return;
+    const timeControl = selectedMode === 'teach' ? 'none' : document.getElementById('time-control-select').value;
     const config = { gameType:selectedGameType, boardSize:selectedSize, mode:selectedMode, colorPref:selectedColorPref,
-      handicap:handicapVal, komi:komiVal, timeControl:selectedMode === 'teach' ? 'none' : document.getElementById('time-control-select').value };
+      handicap:handicapVal, komi:komiVal, timeControl,
+      customMainTime: Math.max(1, Number(document.getElementById('custom-main-minutes').value || 5)) * 60,
+      customIncrement: Math.max(0, Number(document.getElementById('custom-increment-seconds').value || 0)) };
     if (sendAction(setupNewRoom ? { type:'create_room', playerName:localStorage.getItem('weiqi_player_name') || '棋友', config } : { type:'configure_room', config })) {
       creatingRoom = setupNewRoom; document.getElementById('btn-submit-match').disabled = true;
     }
@@ -630,6 +673,17 @@ function setupModalEventListeners() {
 // ==========================================================================
 
 function setupTeachPanelEventListeners() {
+  document.querySelectorAll('.markup-tool').forEach(btn => btn.addEventListener('click', () => {
+    selectedTeachTool = btn.dataset.tool;
+    markupStart = null;
+    document.querySelectorAll('.markup-tool').forEach(item => item.classList.toggle('active', item === btn));
+    const hints = { move: '点击棋盘落子', triangle: '点击棋子或空点添加三角', square: '点击棋子或空点添加方形', circle: '点击棋子或空点添加圆形', cross: '点击棋子或空点添加叉号', number: '点击棋盘自动编号', letter: '点击棋盘添加字母', line: '依次点击起点和终点', arrow: '依次点击起点和终点', eraser: '点击标记擦除', clear: '点击棋盘清空全部标记' };
+    document.getElementById('markup-tool-hint').textContent = hints[selectedTeachTool] || '';
+  }));
+  document.querySelectorAll('.markup-color').forEach(btn => btn.addEventListener('click', () => {
+    annotationColor = btn.dataset.color;
+    document.querySelectorAll('.markup-color').forEach(item => item.classList.toggle('active', item === btn));
+  }));
   document.getElementById('chess-clear').addEventListener('click', async () => { if (await confirmAction('清空棋盘上的所有棋子？可以通过撤销恢复。')) sendAction({type:'teach_action',action:'clear_board'}); });
   document.getElementById('chess-turn').addEventListener('change', e => sendAction({type:'teach_action',action:'set_turn',payload:{color:Number(e.target.value)}}));
   document.querySelectorAll('.chess-palette-btn').forEach(btn => {

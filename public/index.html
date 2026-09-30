@@ -131,6 +131,23 @@
 
     <!-- FIGURE 2: Teaching Mode Controls (Blue Dashed Box) -->
     <section id="teach-mode-panel" class="teach-mode-panel" style="display: none;">
+      <div id="go-markup-tools" class="go-markup-tools" hidden>
+        <div class="markup-tools-heading"><span class="teach-label">练习标记</span><span id="markup-tool-hint">选择工具后点击棋盘</span></div>
+        <div class="markup-tool-grid" role="toolbar" aria-label="围棋练习标记工具">
+          <button type="button" class="markup-tool active" data-tool="move" title="落子">●</button>
+          <button type="button" class="markup-tool" data-tool="triangle" title="三角形">△</button>
+          <button type="button" class="markup-tool" data-tool="square" title="方形">□</button>
+          <button type="button" class="markup-tool" data-tool="circle" title="圆形">○</button>
+          <button type="button" class="markup-tool" data-tool="cross" title="叉号">×</button>
+          <button type="button" class="markup-tool" data-tool="number" title="自动编号">#</button>
+          <button type="button" class="markup-tool" data-tool="letter" title="字母标记">A</button>
+          <button type="button" class="markup-tool" data-tool="line" title="画线">╱</button>
+          <button type="button" class="markup-tool" data-tool="arrow" title="画箭头">↗</button>
+          <button type="button" class="markup-tool" data-tool="eraser" title="擦除标记">⌫</button>
+          <button type="button" class="markup-tool" data-tool="clear" title="清空全部标记">清空</button>
+        </div>
+        <div class="markup-color-row" aria-label="标记颜色"><span>颜色</span><button type="button" class="markup-color active" data-color="#1e293b" title="深色"></button><button type="button" class="markup-color" data-color="#dc2626" title="红色"></button><button type="button" class="markup-color" data-color="#2563eb" title="蓝色"></button><button type="button" class="markup-color" data-color="#16a34a" title="绿色"></button></div>
+      </div>
       <div id="chess-setup-tools" class="chess-setup-tools" hidden>
         <span class="teach-label">摆棋棋子</span>
         <div class="chess-palette">
@@ -301,13 +318,22 @@
           <div class="stepper-item">
             <label class="form-label">时间</label>
             <select id="time-control-select" class="time-select">
-              <option value="none">无时间限制</option>
-              <option value="1m10s">1分钟 + 10秒</option>
-              <option value="1m20s">1分钟 + 20秒</option>
-              <option value="15m20s">15分钟 + 20秒</option>
-
+              <option value="30s">30秒·闪电</option>
+              <option value="1m">1分钟·超快棋</option>
+              <option value="3m2s">3分钟 + 2秒</option>
+              <option value="5m5s">5分钟 + 5秒</option>
+              <option value="10m5s">10分钟 + 5秒</option>
+              <option value="15m10s">15分钟 + 10秒</option>
+              <option value="30m">30分钟·快棋</option>
+              <option value="60m">60分钟·慢棋</option>
+              <option value="custom">自定义时间</option>
+              <option value="none">无限制</option>
             </select>
           </div>
+        </div>
+        <div id="time-custom-fields" class="time-custom-fields" hidden>
+          <label>每方主时间（分钟）<input id="custom-main-minutes" type="number" min="1" max="1440" step="1" value="5"></label>
+          <label>每步加秒（秒）<input id="custom-increment-seconds" type="number" min="0" max="600" step="1" value="10"></label>
         </div>
       </div>
 
