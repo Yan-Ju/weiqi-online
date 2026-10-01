@@ -884,7 +884,7 @@ button:disabled { opacity:.46; cursor:not-allowed; }
 .chess-cell.dark { background:#739552;color:#ebecd0; }
 .chess-cell::before { content:'';position:absolute;inset:0;pointer-events:none;z-index:-1; }.chess-cell.last-move::before { background:#f4e86f42; }.chess-cell.selected::before { background:#f6e96e50;box-shadow:inset 0 0 0 3px #d4a71f; }
 .chess-cell:hover { box-shadow:inset 0 0 0 3px #f0dc9944; }.chess-cell:focus-visible { outline-offset:-4px;z-index:1; }
-.chess-piece { width:97%;height:97%;display:block;pointer-events:none;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.22)) drop-shadow(0 2px 2px rgba(0,0,0,0.10));margin:0 auto;transform:translateY(2%); }
+.chess-piece { width:100%;height:100%;display:block;pointer-events:none;filter:none;margin:0 auto;transform:none; }
 .chess-cell.legal-target::after { content:'';width:22%;height:22%;position:absolute;top:39%;left:39%;border-radius:50%;background:#344c3899;box-shadow:0 0 0 2px #ffffff25;pointer-events:none; }
 .chess-cell.legal-target.occupied::after { inset:4%;width:92%;height:92%;background:none;border:4px solid #314d3799; }
 .square-label,.file-label { position:absolute;font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;font-size:clamp(10px,1.5vw,14px);font-weight:800;line-height:1;pointer-events:none;opacity:0.80;color:inherit;z-index:2; }.square-label { top:3px;left:4px; }.file-label { right:4px;bottom:2px; }
